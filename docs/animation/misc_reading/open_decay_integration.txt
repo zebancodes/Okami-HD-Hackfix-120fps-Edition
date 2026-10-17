@@ -1,0 +1,40 @@
+# RESOLVED 2026-10-10 (fps-followups.md item 19): most lines are the velocity's own push, not its
+# integration; the integrations are rows, current-tick by design or dormant. One gap, camera
+# 47A3A0's +3BC += +3C0 with its 0.85 unrooted: srcroot 47AE31 + pre 47AE44
+# (trace_steps02.spec). `trace_steps.py --uses FN DISP` finds a field's integrations.
+# 2026-10-09: decay_factors.h sites whose decayed field is added into something
+# unpatched in the same function (et71's shape: the velocity damps per tick, the
+# position takes all of it). Not read yet; pl00 +E48/+E54 are current-tick by design,
+# 3817D0 (wp00) is dormant debris (reads.csv). Regenerate: scratch decay_audit.py.
+{'sites': 200, 'with uses': 79, 'unscaled uses': 31}
+33C367 cBallObj +e20 k=0.985 fn 33C290: 33C533 addss xmm1, dword ptr [rsi + 0xe20]
+381C71 wp00 +c0 k=0.93 fn 3817D0: 381C53 operator+= qword ptr [rip + 0x2ef1a7]
+382242 wp00 +c0 k=0.93 fn 381DB0: 382224 operator+= qword ptr [rip + 0x2eebd6]
+38DDB7 wp1a +e28 k=0.95 fn 38DCB0: 38DFA5 addss xmm2, dword ptr [rsi + 0xe28]
+38E7FB wp1b +e20 k=0.97 fn 38E720: 38E7CB addss xmm0, dword ptr [rbx + 0xe20]
+38E80B wp1b +e28 k=0.97 fn 38E720: 38E7E6 addss xmm0, dword ptr [rbx + 0xe28]
+38EBF7 wp1b +e20 k=0.97 fn 38E8D0: 38EAB2 addss xmm1, dword ptr [rdi + 0xe20]; 38EB3C addss xmm0, dword ptr [rdi + 0xe20]; 38EBC7 addss xmm0, dword ptr [rdi + 0xe20]
+38EC07 wp1b +e28 k=0.97 fn 38E8D0: 38EB5A addss xmm0, dword ptr [rdi + 0xe28]; 38EBE2 addss xmm0, dword ptr [rdi + 0xe28]
+38F054 wp1c +e54 k=0.94 fn 38EEE0: 38EFC2 addss xmm0, dword ptr [rbx + 0xe54]
+38F32B wp1c +e20 k=0.94 fn 38F240: 38F2FB addss xmm0, dword ptr [rbx + 0xe20]
+38F33B wp1c +e28 k=0.94 fn 38F240: 38F316 addss xmm0, dword ptr [rbx + 0xe28]
+38F76D wp1c +e20 k=0.94 fn 38F400: 38F69E addss xmm0, dword ptr [rdi + 0xe20]
+38F77D wp1c +e28 k=0.94 fn 38F400: 38F6A6 addss xmm1, dword ptr [rdi + 0xe28]
+3951F1 wp25 +c0 k=0.93 fn 394D50: 3951D3 operator+= qword ptr [rip + 0x2dbc27]
+3957C2 wp25 +c0 k=0.93 fn 395330: 3957A4 operator+= qword ptr [rip + 0x2db656]
+3AB6C5 pl00 +e54 k=0.95 fn 3A9630: 3ABDD8 addss xmm1, dword ptr [rsi + 0xe54]; 3ABE10 addss xmm1, dword ptr [rsi + 0xe54]
+3AB726 pl00 +e54 k=0.98 fn 3A9630: 3ABDD8 addss xmm1, dword ptr [rsi + 0xe54]; 3ABE10 addss xmm1, dword ptr [rsi + 0xe54]
+3ABC68 pl00 +e54 k=0.9 fn 3A9630: 3ABDD8 addss xmm1, dword ptr [rsi + 0xe54]; 3ABE10 addss xmm1, dword ptr [rsi + 0xe54]
+3B3049 pl01 +e48 k=0.999 fn 3B2CF0: 3B2FC4 addss xmm1, dword ptr [rdi + 0xe48]
+3B3173 pl01 +e48 k=0.9 fn 3B2CF0: 3B2FC4 addss xmm1, dword ptr [rdi + 0xe48]
+3C48E7 ? +e48 k=0.6 fn 3C43C0: 3C468D addss xmm0, dword ptr [rdi + 0xe48]; 3C47E6 addss xmm0, dword ptr [rdi + 0xe48]
+3C5454 ? +e48 k=0.5 fn 3C5350: 3C5420 addss xmm1, dword ptr [rbx + 0xe48]
+3C5968 ? +e48 k=0.8 fn 3C57A0: 3C5913 addss xmm0, dword ptr [rbx + 0xe48]
+3C5D39 ? +e48 k=0.97 fn 3C57A0: 3C5913 addss xmm0, dword ptr [rbx + 0xe48]
+3C9423 ? +e48 k=0.85 fn 3C84B0: 3C9404 addss xmm0, dword ptr [r14 + 0xe48]
+3C9D1F ? +e48 k=0.6 fn 3C9940: 3C9BE8 addss xmm0, dword ptr [rdi + 0xe48]
+3CA57A ? +e48 k=0.97 fn 3CA320: 3CA64E addss xmm0, dword ptr [rsi + 0xe48]
+47AD95 ? +3bc k=0.94 fn 47A3A0: 47AE44 addss xmm0, dword ptr [rdi + 0x3bc]
+47ADB6 ? +3bc k=0.98 fn 47A3A0: 47AE44 addss xmm0, dword ptr [rdi + 0x3bc]
+47C118 ? +3bc k=0.94 fn 47BAE0: 47C1B1 addss xmm0, dword ptr [rdi + 0x3bc]
+645415 esf1 +e54 k=0.98 fn 6453F0: 645478 subss xmm0, dword ptr [rbx + 0xe54]

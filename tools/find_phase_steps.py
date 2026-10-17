@@ -82,6 +82,10 @@ NOT_STEPS = {
     # starts, not once a tick; scaled, that channel was mixed at a quarter of
     # its gain at 120 (a half at 60).
     0x1D601: "a mix-matrix coefficient in the sound library",
+    # pl00 3C6080's pull: the per-tick speed +E48 += 0.8 / 0.4 a tick up to 16,
+    # an acceleration (K x s^2), not a phase: gen_world_anims `sq` rows.
+    0x3C624E: "pl00 3C6080's speed growth, an acceleration (world sq row)",
+    0x3C65E6: "pl00 3C6080's speed growth, an acceleration (world sq row)",
 }
 CALLEE_SAVED = {"rbx", "rbp", "rsi", "rdi", "r12", "r13", "r14", "r15"}
 CLASSIFICATION = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),

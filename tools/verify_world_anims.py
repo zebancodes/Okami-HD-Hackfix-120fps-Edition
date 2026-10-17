@@ -21,14 +21,16 @@ Four layers, none of which uses the generator's encoders as an oracle:
      pre    the destination (the step) is multiplied by s right before it;
      dstarg, argscale  the loaded step component, or the copied limit, is
             multiplied by s right after;
+     limsq  the loaded limit on a squared length is multiplied by s, and by s
+            again, right after;
      root   the factor f > 0 left by the instruction becomes f^(1/N): one
             float square root per halving, rounded as sqrtss rounds;
      zfirst, zlast  the result is zeroed, and ufirst, ulast set to 1.0, except
             on the first (fc & mask == 0) or last ((fc + 1) & mask == 0) tick
             of each stock period;
      count  the counting instruction does not run on ticks with fc & mask;
-     countlast  the multiply (or the rate's added change) does not run except
-            on the last tick;
+     countlast  the multiply (the rate's added change, or a counter's store)
+            does not run except on the last tick;
      scaledadd  the call of cVec::operator+= (emulated as flower_kernel does
             it: xyz added, w kept) adds s times its argument;
      floor1 at N > 1, the reloaded float the manifest names is raised to 1.0
@@ -54,7 +56,10 @@ Four layers, none of which uses the generator's encoders as an oracle:
    registers, return address and memory, except the limit register (xmm3;
    xmm1 for 23A2E0 and 2DA410's distance) times s and, for 2DA570, its per-tick
    blend k made 1 - (1 - k)^(1/N) as float square roots give it (k outside
-   (0, 1) and NaN left alone), with its other lanes kept.
+   (0, 1) and NaN left alone), with its other lanes kept. A callvec (the
+   vector mover 2DA3F0) the same, except rdx: it points at a 16-byte slot of
+   the pool's counter area holding the caller's vector with x, y and z times s
+   and w copied, and the caller's vector is untouched.
    A counter whose flags something reads (a countdown's jns) also has ZF and
    SF cleared on a skipped tick, as F1's do: which ones is derived from the
    code (gen_integer_skips.flag_policy), not taken from the generator. The real
@@ -155,11 +160,37 @@ KIND = {0: "lin", 1: "sq", 2: "src", 3: "dst", 4: "pre", 5: "root", 6: "gatefn",
         13: "ulast", 14: "countlast", 15: "floor1", 16: "scaledadd", 17: "argscale",
         18: "count2", 19: "notyet", 20: "smode", 21: "imuln", 22: "srcx", 23: "step",
         24: "callscale", 25: "callblend", 26: "mulflag", 27: "callgate", 28: "mulstore",
-        29: "blend", 30: "blendr", 31: "srcblend", 32: "immstore", 33: "srcroot", 34: "notyetneg", 35: "notyetb", 36: "dstn"}
-CALL_KINDS = ("callscale", "callblend", "callgate")
+        29: "blend", 30: "blendr", 31: "srcblend", 32: "immstore", 33: "srcroot", 34: "notyetneg", 35: "notyetb", 36: "dstn",
+        37: "callvec", 38: "notyetend", 39: "hold", 40: "callend",
+        41: "divn", 42: "notyett", 43: "stockfps", 44: "stockpair",
+        45: "limsq"}
+QUAKE_FPS_SITES = {0x364CBE, 0x370026, 0x3703FF, 0x3C1DE8, 0x3C5FE6}
+QUAKE_PAIR_BITS = (0x3F64F95D, 0x3F4CCCCD)
+CALL_KINDS = ("callscale", "callblend", "callgate", "callvec", "callend")
+# callvec's targets: 2DA3F0(obj, v) is cMatrix::Apply(position, obj + 50, v)
+VEC_MOVERS = {0x2DA3F0}
 MODE = 0xB6AC45        # the real mode byte, pinned at 1 by the patch at 60 and 120
 ZF, SF, OF, CF = 0x40, 0x80, 0x800, 0x1
+PF, AF = 0x4, 0x10
+# notyetend: the object's motion pointer and the header's magic ('mtb3', 6B44F0)
+MOTION_FIELD, MOTION_MAGIC = 0xF38, 0x3362746D
+GPR_NAMES = "rax rcx rdx rbx rsp rbp rsi rdi r8 r9 r10 r11 r12 r13 r14 r15".split()
+# notyetend's motion cases: no motion, a looping one, a non-looping one, a
+# header whose magic is wrong (the advance answers "ended" every tick then)
+MOTION_CASES = ("none", "loop", "once", "badmagic")
 f32, fbits = vmt.f32, vmt.fbits
+
+
+def write_motion(emu, obj, case, header):
+    """[obj + F38] and the header it points at, as MOTION_CASES[case] says
+    (written to both runs alike; host writes are not game writes)"""
+    emu.map_page((obj + MOTION_FIELD) & ~(PAGE - 1))
+    emu.mu.mem_write(obj + MOTION_FIELD, struct.pack("<Q", 0 if case == "none" else header))
+    if case != "none":
+        emu.map_page(header & ~(PAGE - 1))
+        emu.mu.mem_write(header, struct.pack("<I", MOTION_MAGIC ^ (case == "badmagic")))
+        b7 = bytes(emu.mu.mem_read(header + 7, 1))[0] & ~1
+        emu.mu.mem_write(header + 7, bytes([b7 | (case != "once")]))
 
 
 def parse_header(path=HDR):
@@ -185,8 +216,11 @@ def parse_header(path=HDR):
     return dict(sha=re.search(r'WORLD_ANIMS_MAIN_SHA1\s+"([0-9a-f]+)"', text).group(1),
                 names=names, intn=const("kWorldIntNOffset"),
                 stride=const("kWorldGroupStride"), zero=const("kWorldZeroOffset"),
+                live_mode=const("kWorldLiveModeOffset") if "kWorldLiveModeOffset" in text else 0x88,
                 code_off=const("kWorldCodeOffset"), pool_size=const("kWorldPoolSize"),
-                groups=const("kWorldGroups"),
+                counter_off=const("kWorldCounterOffset"),
+                counter_stride=const("kWorldCounterStride"),
+                probe_off=const("kWorldProbeOffset"), groups=const("kWorldGroups"),
                 code=raw("kWorldCode"), orig=raw("kWorldOrig"), lit_orig=lit_orig,
                 fixups=rows("kWorldFixups"), windows=rows("kWorldWindows"),
                 sites=rows("kWorldSites"), literals=rows("kWorldLiterals"),
@@ -269,7 +303,7 @@ def check_modes(path, hdr, img, broken=None):
             n = want_n(fps, mode, master, groups >> g & 1, muted, shadow, hook, complete, name,
                        real)
             ns.append(n)
-            smode = mode if name == "repeat" and n > 1 else 0
+            smode = mode if name in ("repeat", "objects") and n > 1 else 0
             got = (int(r["mask%d" % g]), float(r["scale%d" % g]), int(r["mask2_%d" % g]),
                    int(r["smode%d" % g]), int(r["intn%d" % g]))
             if got != (n - 1, f32(1.0 / n), (n - 1) << 1, smode, n):
@@ -287,14 +321,17 @@ def check_modes(path, hdr, img, broken=None):
 
 def pool_data(hdr, img, n, broken=None, smode=2):
     """The pool at N for every group (as the runtime leaves it); smode is the
-    stock context's mode the repeat group holds at N > 1."""
+    stock context's mode the repeat/objects groups hold at N > 1."""
     pool = relocated_pool(hdr, BASE, POOL)
+    struct.pack_into("<Q", pool, hdr["live_mode"], POOL + hdr["live_mode"] + 8)
     s = f32(1.0 / n)
     for g in range(hdr["groups"]):
         pool[hdr["stride"] * g] = (n - 1) if broken != "gate" else 0
         pool[hdr["stride"] * g + 1] = ((n - 1) << 1) if broken != "mask2" else 0
-        sm = smode if n > 1 and hdr["names"][g] == "repeat" else 0
+        sm = smode if n > 1 and hdr["names"][g] in ("repeat", "objects") else 0
         pool[hdr["stride"] * g + 2] = (3 - sm if sm and broken == "smode" else sm)
+        # notyett: the timer families' mask while the group is on (as they run)
+        pool[hdr["stride"] * g + 3] = (n - 1) if broken != "gate" else 0
         struct.pack_into("<I", pool, hdr["intn"] + 4 * g, n if broken != "intn" else 1)
         struct.pack_into("<f", pool, hdr["stride"] * g + 4, s if broken != "scale" else 1.0)
     struct.pack_into("<f", pool, hdr["zero"], 0.0 if broken != "root" else 1e30)
@@ -365,9 +402,11 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
     pe_imports = pe_import_names()
     problems, runs = [], 0
     sites_by_window = {}
-    for site, kind, _g, win, temp, _counter, _probe, _role in hdr["sites"]:
+    counter_of = {}
+    for site, kind, _g, win, temp, counter, _probe, _role in hdr["sites"]:
         if KIND[kind] not in CALL_KINDS:     # a call's `window` indexes the calls
             sites_by_window.setdefault(win, []).append((site, kind, temp))
+            counter_of[site] = counter
     # a skipped counter whose flags something reads (a countdown's jns) leaves
     # ZF and SF clear, "not finished", as F1's do: which ones, from the code
     dec = tr.Decoder(img, None)
@@ -402,15 +441,17 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
         for n in (1, 2, 4):
             s = f32(1.0 / n)
             for k in range(states):
-                # the repeat group's stock mode at N > 1: 2 (play) or 1 (a 60 Hz menu)
+                # The tick snapshot and live table selection may differ after an
+                # in-tick mode write. Exercise both directions and unknown modes.
                 smode = 1 + (k & 1)
+                live_mode = (1, 2, 0, 3)[(k >> 1) & 3]
                 if (n, smode) not in pools:
                     pools[n, smode] = pool_for(n, smode)
                 pool = pools[n, smode]
                 # the real mode byte: pinned at 1 at N > 1, either at N = 1
                 real = 1 if n > 1 else 1 + (k >> 1 & 1)
                 st = vmt.random_state(rnd)
-                if any(KIND[kk] == "imuln" for _s, kk, _t in sites):
+                if any(KIND[kk] in ("imuln", "divn") for _s, kk, _t in sites):
                     # the game zeroes edx before each of these divs; a random
                     # one would overflow the quotient (#DE) in both runs alike
                     st["rdx"] = 0
@@ -452,6 +493,10 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                 # others, where a CPU always faults: the emulated read would
                 # miss the value the reference scaled.)
                 for fs, fk, _t in sites:
+                    if KIND[fk] == "stockpair":
+                        m = insns[fs].operands[1].mem
+                        st[insns[fs].reg_name(m.base)] = BASE + 0x7A81E8 - m.disp
+                        st[insns[fs].reg_name(m.index)] = real - 1
                     if KIND[fk] == "floor1":
                         st[FLOOR1[fs][0]] = (0x200000000 + rnd.randrange(0, 1 << 32)) & ~7
                     if KIND[fk] in ("mulstore", "immstore"):
@@ -470,7 +515,20 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                     if KIND[fk] == "scaledadd":
                         for r in ("rcx", "rdx"):
                             st[r] = (0x200000000 + rnd.randrange(0, 1 << 32)) & ~15
+                # notyetend reads the object's motion: a pointer object, its
+                # motion one of MOTION_CASES (written to both runs below)
+                motion = {}
+                for fs, fk, ft in sites:
+                    if KIND[fk] == "notyetend":
+                        reg = GPR_NAMES[ft]
+                        st[reg] = (0x200000000 + rnd.randrange(0, 1 << 32)) & ~7
+                        motion[fs] = (st[reg], MOTION_CASES[(k >> 2) % 4],
+                                      (0x300000000 + rnd.randrange(0, 1 << 32)) & ~7)
                 fc = rnd.getrandbits(20) * 4 + (k % 4)
+                # a hold's slot holds this period's stock-tick flags in odd
+                # states (the patched pool), stale zeros in even ones
+                held_flags = {fs: (rnd.getrandbits(12) & 0x8D5) | 0x202
+                              for fs, fk, _t in sites if KIND[fk] == "hold" and k % 2}
                 if selected_windows is not None and lo not in selected_windows:
                     continue
                 stock = (fc & (n - 1)) == 0
@@ -483,6 +541,29 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                         bind_imports(emu, pe_imports, add_scale=s if variant == "orig" else None)
                     vmt.load_state(emu, st, fc)
                     emu.mu.mem_write(BASE + MODE, bytes([real]))
+                    if any(KIND[kk] == "stockfps" for _s, kk, _t in sites):
+                        # Enabled at 60/120: original FPS=60, paced count=30 Hz.
+                        # Mask zero must also retain 60 for the family-off case.
+                        emu.mu.mem_write(BASE + 0xB6AC44, bytes([60 if n > 1 or k & 1 else 30]))
+                    if any(KIND[kk] == "stockpair" for _s, kk, _t in sites):
+                        # Both the shipped table and a runtime-rooted fast slot.
+                        # The private pair must ignore either while paced.
+                        fast = fbits(f32(0.800000011920929 ** 0.25)) if k & 8 else QUAKE_PAIR_BITS[0]
+                        emu.mu.mem_write(BASE + 0x7A81E8, struct.pack("<II", fast, QUAKE_PAIR_BITS[1]))
+                        if variant == "patched":
+                            ptr = POOL + hdr["live_mode"] + 8
+                            emu.mu.mem_write(ptr, bytes([live_mode]))
+                            if n == 1:
+                                # Unusable pointer: mask zero must bypass the read.
+                                emu.mu.mem_write(POOL + hdr["live_mode"], struct.pack("<Q", 0xFFFFFFFFFFFFFFFF))
+                    for obj, case, header in motion.values():
+                        write_motion(emu, obj, case, header)
+                    if variant == "patched":
+                        for fs, flags in held_flags.items():
+                            slot = POOL + hdr["counter_off"] + hdr["counter_stride"] * \
+                                (counter_of[fs] + 1)
+                            emu.mu.mem_write(slot, struct.pack("<QI", flags,
+                                                               ((fc & ~(n - 1)) + 1) & 0xFFFFFFFF))
                     if variant == "orig":
                         for site, kind, _t in sites:
                             ins = insns[site]
@@ -581,6 +662,12 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                                 def post(e, d=d):
                                     e.set_xmm_low(d, f32(e.xmm_low(d) * s))
                                 emu.pre[site + ins.size] = post
+                            elif kname == "limsq" and n > 1:
+                                d = int(ins.reg_name(ins.operands[0].reg)[3:])
+
+                                def post(e, d=d):
+                                    e.set_xmm_low(d, f32(f32(e.xmm_low(d) * s) * s))
+                                emu.pre[site + ins.size] = post
                             elif kname == "dstn" and n > 1:
                                 d = int(ins.reg_name(ins.operands[0].reg)[3:])
 
@@ -623,19 +710,25 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                                 def skip(e, ins=ins):
                                     e.set_reg("rip", BASE + ins.address + ins.size)
                                 emu.pre[site] = skip
-                            elif kname in ("notyet", "notyetneg", "notyetb") and not stock:
-                                # Tests/cmp do not run. AND must still update
-                                # its register, then only its branch flags are
-                                # forced to the "not yet" path. The AND is done
+                            elif kname in ("notyet", "notyetneg", "notyetb", "notyett") \
+                                    and not stock:
+                                # Tests/cmp do not run. AND (or a countdown's
+                                # own sub/add/dec) must still update its
+                                # register, then only its branch flags are
+                                # forced to the "not yet" path. It is done
                                 # here and skipped, as a test is: a flags write
                                 # in the hook after it is lost when that hook
                                 # is the window's end (Unicorn's lazy flags).
-                                if ins.mnemonic == "and" and (
+                                if ins.mnemonic in ("and", "sub", "add") and (
                                         len(ins.operands) != 2 or
                                         ins.operands[0].type != CX.X86_OP_REG or
-                                        ins.operands[1].type != CX.X86_OP_IMM):
-                                    raise RuntimeError("notyet %X: and of a form the "
-                                                       "reference does not model" % site)
+                                        ins.operands[1].type != CX.X86_OP_IMM) or \
+                                        ins.mnemonic == "dec" and (
+                                        len(ins.operands) != 1 or
+                                        ins.operands[0].type != CX.X86_OP_REG):
+                                    raise RuntimeError("notyet %X: %s of a form the "
+                                                       "reference does not model" % (
+                                                           site, ins.mnemonic))
 
                                 def notyet(e, ins=ins, negative=kname == "notyetneg",
                                            below=kname == "notyetb"):
@@ -644,11 +737,45 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                                         r = ins.reg_name(ins.operands[0].reg)
                                         e.set_reg(r, e.reg(r) & ins.operands[1].imm)
                                         fl &= ~CF   # AND clears CF (and OF, below)
+                                    elif ins.mnemonic in ("sub", "add", "dec"):
+                                        # the register as the instruction leaves it:
+                                        # a 32-bit result zero-extended, a narrower
+                                        # one merged into the full register
+                                        op = ins.operands[0]
+                                        name = ins.reg_name(op.reg)
+                                        full = vmt_reg64(name)
+                                        bits = 8 * op.size
+                                        width = (1 << bits) - 1
+                                        imm = -1 if ins.mnemonic == "dec" else ins.operands[1].imm
+                                        if ins.mnemonic == "sub":
+                                            imm = -imm
+                                        old = e.reg(full)
+                                        v = ((old & width) + imm) & width
+                                        e.set_reg(full, v if bits == 32 else (old & ~width) | v)
                                     e.mu.reg_write(U.UC_X86_REG_EFLAGS,
                                                    (fl & ~(ZF | SF | OF)) | (SF if negative else 0) |
                                                    (CF if below else 0))
                                     e.set_reg("rip", BASE + ins.address + ins.size)
                                 emu.pre[site] = notyet
+                            elif kname == "notyetend" and not stock and \
+                                    motion[site][1] != "loop":
+                                # held, and the motion does not loop: the
+                                # advance's own `test al, al` reads al = 0 (not
+                                # ended), a draw's test below it notyet's flags
+                                def notended(e, ins=ins, answer=ins.op_str == "al, al"):
+                                    fl = e.mu.reg_read(U.UC_X86_REG_EFLAGS)
+                                    e.mu.reg_write(U.UC_X86_REG_EFLAGS,
+                                                   (fl & ~(CF | PF | AF | ZF | SF | OF)) | ZF | PF
+                                                   if answer else fl & ~(ZF | SF | OF))
+                                    e.set_reg("rip", BASE + ins.address + ins.size)
+                                emu.pre[site] = notended
+                            elif kname == "hold" and not stock and site in held_flags:
+                                # held with this period's slot: its flags, the
+                                # compare skipped
+                                def held(e, ins=ins, flags=held_flags[site]):
+                                    e.mu.reg_write(U.UC_X86_REG_EFLAGS, flags)
+                                    e.set_reg("rip", BASE + ins.address + ins.size)
+                                emu.pre[site] = held
                             elif kname == "smode" and not stock:
                                 def skip(e, ins=ins):
                                     e.set_reg("rip", BASE + ins.address + ins.size)
@@ -662,6 +789,32 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                                 def post(e):
                                     e.mu.mem_write(BASE + MODE, e._mode)
                                 emu.pre[site] = pre
+                                emu.pre[site + ins.size] = post
+                            elif kname == "divn" and n > 1:
+                                # the divisor times N for the div, kept after it
+                                r = vmt_reg64(ins.reg_name(ins.operands[0].reg))
+
+                                def pre(e, n=n, r=r):
+                                    e._divisor = e.reg(r)
+                                    e.set_reg(r, (e._divisor & ~0xFFFFFFFF) |
+                                              ((e._divisor * n) & 0xFFFFFFFF))
+
+                                def post(e, r=r):
+                                    e.set_reg(r, e._divisor)
+                                emu.pre[site] = pre
+                                emu.pre[site + ins.size] = post
+                            elif kname == "stockfps" and n > 1:
+                                r = vmt_reg64(ins.reg_name(ins.operands[0].reg))
+
+                                value = 60 if site in QUAKE_FPS_SITES and smode == 1 else 30
+                                def post(e, r=r, value=value):
+                                    e.set_reg(r, value)
+                                emu.pre[site + ins.size] = post
+                            elif kname == "stockpair" and n > 1 and live_mode in (1, 2):
+                                x = int(ins.reg_name(ins.operands[0].reg)[3:])
+                                value = QUAKE_PAIR_BITS[live_mode - 1]
+                                def post(e, x=x, value=value):
+                                    e.mu.reg_write(vmt.XMMS[x], value)
                                 emu.pre[site + ins.size] = post
                             elif kname == "imuln" and n > 1:
                                 def post(e, n=n):
@@ -677,11 +830,13 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                                 m = ins.operands[0].mem
                                 base, disp = ins.reg_name(m.base), m.disp
 
-                                def post(e, n=n, base=base, disp=disp):
+                                def post(e, n=n, base=base, disp=disp, size=ins.operands[0].size):
+                                    # a dword wait, or a byte wait (its low byte)
                                     ea = (e.reg(base) + disp) & 0xFFFFFFFFFFFFFFFF
-                                    v = struct.unpack("<I", e.mu.mem_read(ea, 4))[0]
-                                    e.mu.mem_write(ea, struct.pack("<I", (v * n) & 0xFFFFFFFF))
-                                    e.written.update(range(ea, ea + 4))
+                                    fmt = "<I" if size == 4 else "<B"
+                                    v = struct.unpack(fmt, e.mu.mem_read(ea, size))[0]
+                                    e.mu.mem_write(ea, struct.pack(fmt, (v * n) & ((1 << 8 * size) - 1)))
+                                    e.written.update(range(ea, ea + size))
                                 emu.pre[site + ins.size] = post
                             elif kname == "immstore" and n > 1:
                                 op = ins.operands[0]
@@ -730,12 +885,18 @@ def check_windows(img, patched_img, pool_for, hdr, rnd, states, only_window=None
                         # Only ZF/SF can reach a countdown consumer. Other
                         # arithmetic flags are dead on every successor path.
                         snap["flags"] &= ZF | SF
-                    if not stock and any(KIND[kind] in ("notyet", "notyetneg", "notyetb") and
-                                         insns[site].mnemonic == "and"
-                                         for site, kind, _temp in sites):
-                        # The following branch reads ZF only. PF from the
-                        # register-preserving AND is dead on both paths, and
-                        # Unicorn differs on it at the window boundary.
+                    if any(KIND[kind] in ("notyet", "notyetneg", "notyetb", "notyett") and
+                           (insns[site].mnemonic in ("sub", "add", "dec") or
+                            not stock and insns[site].mnemonic == "and")
+                           for site, kind, _temp in sites):
+                        # A countdown's own decrement as the flag source: its
+                        # branch reads ZF, SF or OF; CF, PF and AF are dead on
+                        # both paths, and Unicorn's lazily computed AF and PF
+                        # differ at the window boundary on any tick.
+                        # The following branch reads ZF, SF or OF only. CF,
+                        # PF and AF from the register-preserving instruction
+                        # are dead on both paths, and Unicorn differs on PF
+                        # at the window boundary.
                         if "flags" in snap:
                             snap["flags"] &= ZF | SF | OF
                     results.append((snap, emu))
@@ -1782,6 +1943,7 @@ def check_calls(img, patched_img, pool_for, hdr, rnd, states, only_call=None):
     blend_ref(k, N)."""
     problems, runs = [], 0
     kinds = {site: KIND[k] for site, k, *_ in hdr["sites"]}
+    temps = {site: temp for site, _k, _g, _w, temp, *_ in hdr["sites"]}
     pools = {}
     ops = {c[0]: op for c, op in zip(hdr["calls"], call_ops(hdr))}
     for rva, _stub, target in hdr["calls"]:
@@ -1792,6 +1954,22 @@ def check_calls(img, patched_img, pool_for, hdr, rnd, states, only_call=None):
             gp, gr = check_gate_call(img, patched_img, pool_for, rva, target, rnd, states)
             problems += gp
             runs += gr
+            continue
+        if kname == "callend":
+            ep, er = check_end_call(img, patched_img, pool_for, pools, rva, target,
+                                    temps[rva], rnd, states)
+            problems += ep
+            runs += er
+            continue
+        if kname == "callvec" or target in VEC_MOVERS:
+            if kname != "callvec" or target not in VEC_MOVERS:
+                problems.append("call %X of %X is %s; a vector mover's call must be callvec"
+                                % (rva, target, kname))
+                continue
+            vp, vr = check_vec_call(img, patched_img, pool_for, pools, hdr, rva, target,
+                                    ops[rva], rnd, states)
+            problems += vp
+            runs += vr
             continue
         want_kind = ("callblend" if target in BLEND and rva not in ALREADY_BLEND_SCALED
                      else "callscale")
@@ -1864,12 +2042,182 @@ def check_calls(img, patched_img, pool_for, hdr, rnd, states, only_call=None):
     return problems, runs
 
 
+def check_end_call(img, patched_img, pool_for, pools, rva, target, objreg, rnd, states):
+    """A callend (a draw's call on the ended side of a motion advance), run
+    from its call instruction: the original reaches the generator. The
+    patched stub reaches it too, with the same registers (the flags aside:
+    dead at a call) and the same return address, on a stock tick, at N = 1
+    and while the object's motion loops; otherwise it returns to the caller
+    at once with eax = -1 (rax 0xFFFFFFFF), rsp where it was before the call
+    and every other register as it was. Neither writes game memory but the
+    return address and the stub's scratch below the stack pointer."""
+    problems, runs = [], 0
+    if bytes(img[rva:rva + 5]) != b"\xE8" + struct.pack("<i", target - (rva + 5)):
+        return ["main+%X is not `call %X`" % (rva, target)], 0
+    reg = GPR_NAMES[objreg]
+    for n in (1, 2, 4):
+        if n not in pools:
+            pools[n] = pool_for(n, 2)
+        for k in range(states):
+            st = vmt.random_state(rnd)
+            st[reg] = (0x200000000 + rnd.randrange(0, 1 << 32)) & ~7
+            case = MOTION_CASES[(k >> 2) % 4]
+            header = (0x300000000 + rnd.randrange(0, 1 << 32)) & ~7
+            fc = rnd.getrandbits(20) * 4 + (k % 4)
+            stock = (fc & (n - 1)) == 0
+            results = []
+            for variant in ("orig", "patched"):
+                emu = vmt.Emu(img if variant == "orig" else patched_img,
+                              pools[n] if variant == "patched" else None, seed=st["mem_seed"])
+                vmt.load_state(emu, st, fc)
+                write_motion(emu, st[reg], case, header)
+
+                def stop(e):
+                    e.exit = e.reg("rip")
+                    e.mu.emu_stop()
+                emu.pre = {BASE + target: stop, BASE + rva + 5: stop}
+                emu.stop_outside = None
+                try:
+                    emu.mu.emu_start(BASE + rva, 0, count=300)
+                except UcError as e:
+                    emu.exit = "fault %s" % e
+                results.append((snapshot(emu, set(), True), emu))
+            (a, ea), (b, eb) = results
+            runs += 1
+            if a["exit"] != BASE + target:
+                problems.append("call %X: the original does not reach %X" % (rva, target))
+                break
+            want = dict(a)
+            if not (stock or case == "loop"):
+                want.update(rax=0xFFFFFFFF, rsp=st["rsp"], exit=BASE + rva + 5)
+            if want != b:
+                diff = [key for key in want if want[key] != b.get(key)]
+                problems.append("callend %X N=%d fc&mask=%d %s: %s differ (%s: want %s, got %s)"
+                                % (rva, n, fc & (n - 1), case, ", ".join(diff[:4]), diff[0],
+                                   vmt_hex(want[diff[0]]), vmt_hex(b.get(diff[0]))))
+                break
+            if b["exit"] == BASE + target:
+                ret = struct.unpack("<Q", eb.mu.mem_read(eb.reg("rsp"), 8))[0]
+                if ret != BASE + rva + 5:
+                    problems.append("callend %X N=%d: return address %X" % (rva, n, ret))
+                    break
+            # game memory: nothing but the return address and the scratch below
+            low = st["rsp"] - 0x200
+
+            def game(e):
+                return {x for x in e.written if not (POOL <= x < POOL + 0x100000) and
+                        not (low <= x < st["rsp"])}
+            if game(ea) or game(eb):
+                problems.append("callend %X N=%d: game memory written" % (rva, n))
+                break
+    return problems, runs
+
+
+def check_vec_call(img, patched_img, pool_for, pools, hdr, rva, target, op, rnd, states):
+    """A callvec, run from its call instruction to its target's entry, the
+    patched image against the original: the same registers (rdx aside: the
+    patched one points at the copy; xmm4, the stub's scratch; the flags, dead
+    at a call), the same return address and game memory, the caller's vector
+    untouched, and at the patched rdx a 16-byte slot of the pool's counter area
+    holding the vector's x, y and z times s and its w, bit for bit (a
+    signalling NaN made quiet by the multiply, as quiet_lanes allows)."""
+    problems, runs = [], 0
+    if bytes(img[rva:rva + 5]) != bytes([op]) + struct.pack("<i", target - (rva + 5)):
+        return ["main+%X is not `call %X`" % (rva, target)], 0
+    slots_lo = POOL + hdr["counter_off"]
+    slots_hi = POOL + hdr["probe_off"]
+    for n in (1, 2, 4):
+        s = f32(1.0 / n)
+        if n not in pools:
+            pools[n] = pool_for(n, 2)
+        for k in range(states):
+            st = vmt.random_state(rnd)
+            # the stub reads [rdx]: a pointer, as the game passes
+            st["rdx"] = (0x200000000 + rnd.randrange(0, 1 << 32)) & ~15
+            fc = rnd.getrandbits(20) * 4 + (k % 4)
+            # every third state: special lanes (zeros, NaNs, an infinity, a denormal)
+            lanes = rnd.sample([0, 0x80000000, 0x7FC00001, 0x7F800001, 0x7F800000,
+                                0x00000001, fbits(1.0), fbits(-3.5)], 4) if k % 3 == 0 else None
+            results = []
+            for variant in ("orig", "patched"):
+                emu = vmt.Emu(img if variant == "orig" else patched_img,
+                              pools[n] if variant == "patched" else None, seed=st["mem_seed"])
+                vmt.load_state(emu, st, fc)
+                if lanes:
+                    emu.map_page(st["rdx"] & ~(vmt.PAGE - 1))
+                    emu.mu.mem_write(st["rdx"], struct.pack("<4I", *lanes))
+
+                def stop(e):
+                    e.exit = BASE + target
+                    e.mu.emu_stop()
+                emu.pre = {BASE + target: stop}
+                emu.stop_outside = None
+                try:
+                    emu.mu.emu_start(BASE + rva, 0, count=200)
+                except UcError as e:
+                    emu.exit = "fault %s" % e
+                results.append((snapshot(emu, {4}, True), emu))
+            (a, ea), (b, eb) = results
+            runs += 1
+            if a["exit"] != BASE + target:
+                problems.append("call %X: the original does not reach %X" % (rva, target))
+                break
+            if b["exit"] != BASE + target:
+                problems.append("call %X N=%d: the stub does not reach %X (%s)" %
+                                (rva, n, target, b["exit"]))
+                break
+            want = dict(a)
+            want["rdx"] = b["rdx"]
+            if want != b:
+                diff = [key for key in want if want[key] != b.get(key)]
+                problems.append("call %X N=%d: %s differ (%s: want %s, got %s)" % (
+                    rva, n, ", ".join(diff[:4]), diff[0], vmt_hex(want[diff[0]]),
+                    vmt_hex(b.get(diff[0]))))
+                break
+            if not slots_lo <= b["rdx"] <= slots_hi - 16 or \
+                    (b["rdx"] - slots_lo) % hdr["counter_stride"]:
+                problems.append("call %X N=%d: rdx %X is not a slot of the pool's counter "
+                                "area" % (rva, n, b["rdx"]))
+                break
+            src = struct.unpack("<4I", eb.mu.mem_read(a["rdx"], 16))
+            got = struct.unpack("<4I", eb.mu.mem_read(b["rdx"], 16))
+            exp = [fbits(f32(struct.unpack("<f", struct.pack("<I", lane))[0] * s))
+                   if i < 3 else lane for i, lane in enumerate(src)]
+            # a scaled NaN lane is any NaN (the multiply quiets a signalling one);
+            # w is copied, bit for bit
+            norm = lambda ls: [0x7FC00000 if (v & 0x7F800000) == 0x7F800000 and v & 0x7FFFFF
+                               else v for v in ls]
+            if norm(exp[:3]) != norm(list(got[:3])) or exp[3] != got[3]:
+                problems.append("call %X N=%d: the copy is %s, want %s (from %s)" % (
+                    rva, n, ["%08X" % v for v in got], ["%08X" % v for v in exp],
+                    ["%08X" % v for v in src]))
+                break
+            ret = struct.unpack("<Q", eb.mu.mem_read(eb.reg("rsp"), 8))[0]
+            want_ret = BASE + rva + 5 if op == 0xE8 else \
+                struct.unpack("<Q", ea.mu.mem_read(ea.reg("rsp"), 8))[0]
+            wa, wb = vmt.game_writes(ea), vmt.game_writes(eb)
+            if ret != want_ret or wa != wb or any(
+                    read_byte(ea, x) != read_byte(eb, x) for x in wa):
+                problems.append("call %X N=%d: return address or memory differs" % (rva, n))
+                break
+            if bytes(eb.mu.mem_read(a["rdx"], 16)) != struct.pack("<4I", *src):
+                problems.append("call %X N=%d: the caller's vector changed" % (rva, n))
+                break
+    return problems, runs
+
+
 # the yes/no functions a callgate may answer for: the skip check
 GATE_TARGETS = {0x13A7D0, 0x433250, 0x4331D0, 0x4332E0, 0x433360}
 # and the void calls the generator gates ("void": rax unread after the call):
 # call site -> its update (or a sound play whose result the caller drops:
 # vtca 375FF0's phase sound, cDogLikeHm 4873A0's +E36 sounds)
-VOID_GATE_CALLS = {0x626404: 0x623540, 0x376136: 0x44E470, 0x48762A: 0x44E3C0}
+VOID_GATE_CALLS = {0x626404: 0x623540, 0x376136: 0x44E470, 0x48762A: 0x44E3C0,
+                   # the ink's add (496500): refill, idle drain, drawing drain, em60
+                   0x17BF33: 0x496500, 0x17BE6A: 0x496500, 0x16EAF6: 0x496500,
+                   0x2B17AD: 0x496500,
+                   # em65's chance trial 2C1839, whose compare has no window: its
+                   # action setter is skipped between stock ticks
+                   0x2C1847: 0x2C9A70}
 
 
 def check_gate_call(img, patched_img, pool_for, rva, target, rnd, states):
@@ -2132,6 +2480,8 @@ def main():
                     help="verify only these windows; repeat for a focused batch")
     ap.add_argument("--only-call", type=lambda s: int(s, 16), action="append", default=None,
                     help="verify only these calls; repeat for a focused batch")
+    ap.add_argument("--all-problems", action="store_true",
+                    help="with --only-window/--only-call, print every problem, not 25")
     ap.add_argument("--break", dest="broken",
                     choices=("scale", "root", "gate", "literal", "mask2", "smode", "intn"))
     args = ap.parse_args()
@@ -2168,6 +2518,8 @@ def main():
         vals = dict(ln.split(None, 1) for ln in report.splitlines() if len(ln.split()) == 2)
         main_base, pool_base = int(vals["main"], 16), int(vals["pool"], 16)
         installed = open(os.path.join(work, "pool.bin"), "rb").read()
+        if struct.unpack_from("<Q", installed, hdr["live_mode"])[0] != int(vals["live_mode"], 16):
+            problems.append("installed live stock-mode pointer differs from runtime source")
         want = relocated_pool(hdr, main_base, pool_base)
         co = hdr["code_off"]
         if installed[co:] != bytes(want[co:]):
@@ -2219,7 +2571,7 @@ def main():
               (cruns, len(set(args.only_call)), args.states, len(cprob)))
 
     if args.only_window or args.only_call:
-        for p in problems[:25]:
+        for p in (problems if args.all_problems else problems[:25]):
             print("   PROBLEM " + p)
         print("\n%s" % ("FAILED: %d problems" % len(problems) if problems else
                          "focused checks passed"))

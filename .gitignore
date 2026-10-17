@@ -16,6 +16,8 @@ tools/frame_xrefs.txt
 screen.png
 # regenerate with tools/gen_tracer.py (needs the game's main.dll)
 src/generated/
+# local tool settings (machine-specific paths)
+.mcp.json
 # private working notes (kept locally, not published)
 docs/animation/PLAN.md
 docs/animation/NEXT_PLAYTEST.md

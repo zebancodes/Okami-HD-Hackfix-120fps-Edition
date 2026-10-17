@@ -1661,6 +1661,340 @@ Project layout
 Changelog
 ---------
 
+**1.0.2** - fixes for what players reported in 1.0.1.
+- Fixed: ink refilled four times as fast at 120 (twice at 60). The ink only
+  changes through one function whose amount is its caller's argument, so the
+  census saw no per-tick step in the callers. The refill, the idle drain, the
+  drain while drawing and the one ink-eating enemy's drain now act once per
+  stock tick.
+- Fixed: with a gamepad, the Celestial Brush moved four times as fast at
+  120. The cursor's step is now a quarter per tick. The game drops a move
+  shorter than 4 (8 when it turns back) and puts the cursor back on its last
+  point; it tests the squared length, so those limits are now a sixteenth,
+  and a quarter step is kept exactly when the original step would be (the
+  first offline build left them, and the cursor did not move at all). Its
+  pull toward a nearby target while the stick is still is a quarter per tick
+  too. A stroke drains ink while it is drawn and ends when it has used a pot,
+  and with a gamepad that drain is per tick, so it is paced too: a stroke can
+  be as long as at 30.
+- Fixed: with the Thief's Glove, Issun took four times as long to reach the
+  enemy at 120. He flies along the brush stroke one recorded point a tick,
+  and the stroke records a point every tick, but his step had been paced to
+  stock ticks. The same for two other characters that follow a stroke.
+- Fixed: counters that count events were paced as if they counted ticks, so
+  an event between two stock ticks was lost. Digging counts the dig button's
+  presses (one paw stroke each, more than five finish the dig), and at 120
+  three presses in four were lost, so Amaterasu kept digging one paw at a
+  time. Actions that repeat an animation a set number of times (an action of
+  hers that loops five times, animals' and other characters' idles) repeated
+  it up to four times as often, button mashing to break free lost presses,
+  and the loading screen's mini-game missed well-timed presses. 43 such counters (animation loops, presses, and
+  indexes into the brush stroke) now run as in the original game; a new
+  check, `tools/survey_event_counters.py`, fails if any counter that an
+  animation's end or a button press gates is paced without a written review
+  (`tools/event_counters.py`).
+- Fixed: the object one brush technique drops onto the ground fell four
+  times its distance at 120, ending below the ground.
+- Fixed: the green light trail behind Amaterasu at a run looked much wider
+  at 120. The trail strips keep a fixed number of their emitter's past
+  positions and add one every tick, so at 120 a strip covered a quarter of
+  the distance at full width. They now add a point once per stock tick, and
+  the head still follows her every tick.
+- Fixed: the dash after the sprint charge lasted a quarter of its time at
+  120. Its length is the charge frames + 150 ticks, counted from the charge
+  frames, and the run fix's scaled charge frames cancel out of it: only the
+  150 needed pacing.
+- Fixed: the dash and the walk reached their speed four times as fast at 120.
+  Both approach a target speed by a fraction each tick; the targets were
+  scaled, the fractions were not (the jog had the same fault, fixed before).
+- Fixed: three moves that start with a forward boost capped it at the stock
+  speed per tick, so at 120 the cap almost never applied, and when it did it
+  set a stock-tick speed. The cap is now in the current tick's units.
+- Fixed: things that fall through the game's generic fall (villagers, dropped
+  items, a hopping animal, carried objects, a weapon object) fell four
+  times as far, and hopped four times as high, at 120. The fall applied the
+  time scale to gravity but moved by the full speed every tick.
+- Fixed: a ride the player steers reached four times its speed at 120 (its
+  acceleration fought a decay that was already converted, as swimming did),
+  and a pull toward a point sped up four times as fast.
+- Fixed: about a dozen of Amaterasu's moves set her speed to a fixed value
+  and moved by it every tick (a hop back, a dive, weapon lunges and others),
+  so they went four times as far at 120. A census candidate is a value that
+  updates itself; a plain set never was one.
+- Fixed: comparisons of her per-tick speed against fixed values picked the
+  other branch at 120: a running attack's fast variant could not trigger, a
+  charge's hitbox switched off early, she was snapped to the ground at a full
+  run, and two camera modes did not end when she walked away.
+- Fixed: knocked objects (pots, crates and the like) popped up many times too
+  fast at 120 before falling: the pop's lift and its movement were per tick,
+  and only the gravity had the time scale. An effect thrown at the player fell
+  sixteen times too fast for the same reason.
+- Fixed: four of the player's weapon objects moved by the slow-motion step
+  without the time scale (four times as far at 120), and two aerial attacks
+  fell or rose four times as fast.
+
+- Follow-up FPS audit (2026-10-06/07, offline): the walk animation now recovers
+  stock-unit speed before its rate divide; 36 per-tick enemy chance trials
+  are paced together; and 69 additional forward-movement calls apply the
+  time scale to their distance. All 129 direct calls to the forward mover
+  have been classified, including the already-scaled and one-off uses.
+  Two inherited em85 counter gates were removed after caller tracing showed
+  that they count selected attack attempts; the chance branches now establish
+  attempt frequency, and the fourth accepted attempt still starts the cooldown.
+  The remaining review queues and evidence are in
+  [fps-followups.md](animation/fps-followups.md).
+- Fixed: three more enemies (em65, em60 and the boss em88) drew their
+  decisions every tick once a cooldown was spent, with chances of 0.1% to
+  50% a tick, so at 120 they chose an attack about four times as often. Their
+  186 trials now fail between stock ticks, as em16's, em85's and em89's do.
+  `tools/chance_trials.py` follows each draw to the compares it decides and
+  plans the gates; `tools/verify_chance_chains.py` runs whole chains on the
+  original and the patched code with random states and draws.
+- Fixed: sounds, effects and spawns keyed to an exact animation frame
+  (`(int)frame == K`, with no check that the frame has just changed) ran on
+  every tick the frame lasted: four times at 120, since frames step by a
+  quarter. That covered footstep dust, many enemies' attack sounds and
+  effects, one enemy's projectile volleys (five projectiles four times over),
+  another's spawns and a camera shake. 39 such tests now pass once a stock
+  tick; `tools/frame_events.py --check` fails on any unguarded one with
+  neither a row nor a written review.
+- Fixed: the same for counters that are paced to the original tick rate: a
+  sound, effect or motion start at an exact count (or every N counts) ran
+  on each of the N ticks the count lasts. That covered a countdown's beeps,
+  some objects' repeating sounds, sparks and sounds in a few of Amaterasu's
+  moves, and some enemy and object effects (31 tests); the same check now
+  covers counters too.
+- Fixed offline: four weapon objects applied a retained signed direction's
+  full distance every tick while their waits already ran at the original
+  pace. The heading calls now scale only that distance. A returning weapon's
+  outbound and homing distances and an enemy's airborne vector movement
+  had the same missing conversion; their source units and target geometry
+  are preserved. One weapon's per-tick random spin increment now scales
+  separately. Directed heading/vector checks include missing-conversion
+  and extra-scale fault injections. In-game validation remains pending;
+  [fps-followups.md](animation/fps-followups.md) records the unresolved cases.
+- Fixed offline: a floating enemy with four parts (em8f) and three objects
+  (uta4, utb6, utb7) bob on a phase in degrees that gains 1 a tick. In their
+  usual branch it was never paced, so the hover bobbed four times as fast at
+  120; the census had filed the phase as a state step. The phase now steps
+  once a stock tick, and the sideways sway it drives, which the vector
+  mover 2DA3F0 adds every tick, is scaled to the share of a stock tick. em8f
+  stores that vector with no constant to scale, so a new kind, `callvec`,
+  hands the mover a copy with xyz times s and keeps the stored vector in
+  stock units. uta4's forward glide (0.4 x (sin + 1) a tick) went four times
+  as far; its constants are scaled. Directed checks run each class's own
+  code against the original, with missing-conversion and extra-scale faults.
+- Fixed offline: the coverage report counted a candidate fixed when any
+  patch lay within 8 bytes of its load and store, even on another branch or
+  on another step of the same update. It now asks for a patch on the
+  update's own path, and reading what that turned up (and every unscaled
+  literal step beside a scaled one) fixed about 30 more spots: one direction
+  of several two-way fades and blends (the other was patched), the motion
+  blend's extra step, slow-motion and remaining-distance countdowns, enemy
+  and object countdowns, the money display counting up four times as fast,
+  a spin and a turn, an extra damping on Amaterasu's speed and on the camera,
+  and an object whose velocity damped correctly while its position still
+  took the whole velocity every frame.
+- Fixed offline: four bosses' movements (em86's, em87's and em89's) went
+  four times as far at 120 (one also settled at four times its speed, 16x in
+  all, in a dash). Their moves now take a quarter of the vector (`callvec`),
+  one keeps its distance to Amaterasu by a blend, and the missing push and
+  decay steps of their speeds are converted. One of em86's moves (a factor
+  that can exceed 1) is still left.
+- Fixed offline: a new tracer, `tools/trace_steps.py`, follows each update's
+  step back through the function's control flow, stack slots and vector
+  calls, separates it from the update's own old value, and checks that every
+  path of the step goes through a conversion (or follows the field it adds to
+  the code that writes it). Run over every update the coverage report counts
+  fixed (4,318), it found about 20 that were not: em86 closing in on
+  Amaterasu (an approach whose factor reaches 1, now a blend on its
+  constant), another boss's volleys every sixth tick and its push on its far
+  distance bands, a third boss's speed decay on one branch (it settled near
+  half speed), an enemy's charge growing x1.2 a tick, an enemy's timed
+  attack clock, slow-time steps of one boss's sub-objects, Amaterasu turning
+  toward a target and rising on a lift, the camera's tilt in two camera
+  modes, weapon spins, an acceleration and a sweeping hit point, an object's
+  spin and another's fall (their velocities' ramps were scaled, the
+  integration not), the Files screen's info panel sliding N times as far,
+  a menu's slide and zoom, the game-over screen and a screen wipe's fade.
+  Four falls the port audit had passed (a dog-like character and three
+  object classes: gravity times the time scale, but the position took the
+  whole velocity every tick, four times the fall at 120) are fixed too.
+  `--check` now runs in the suite: it fails on any covered update whose step
+  is not converted and that has no written reading.
+- Fixed offline: a villager's repeated backward hop and a push back copy a
+  vector in stock units into the root motion every tick, where the motion
+  advance keeps a tick's share. The hop came four times as often and slid
+  about nine times as far at 120; the push took a quarter of the time. The
+  vector now starts at a tick's share and changes once a stock period, in
+  the original order around the copy, and the hop's reload countdown
+  changes on each period's last tick (`countlast` now also takes an integer
+  counter's store). Both match the original tick for tick in a model of
+  their code.
+- Fixed offline: the turn-step survey had scaled two turns that happen once,
+  as a move starts: an object thrown at Amaterasu turns toward her by up to
+  30 degrees, and an enemy's leap by up to 90, and at 120 they turned a
+  quarter of the way. `tools/once_blocks.py` finds code that runs once per
+  phase of a state (reached only while a phase byte has one value, which
+  every path then changes), and the survey leaves such calls alone. No
+  other world row sits in such a block. (The thrown object's random
+  scatter is drawn once per throw, not every tick: nothing to pace.)
+- Fixed offline: every random draw in the game now has a reading (2,568;
+  `tools/roll_reads.py`, verdicts in `docs/animation/followup_reviews.csv`).
+  Most are drawn once per state, hit or spawn. Those that were not:
+  - A motion's sound and flag keys fire while its frame is within one step
+    of the key, measured with a 30 fps step. The port's 60 fps mode steps
+    half of it (a quarter at 120), so each keyed sound, footstep dust,
+    keyed voice and keyed shake fired on two frames at 60 and four at 120.
+    The window is now one step wide at every rate; Amaterasu's run has
+    three dust windows of its own, fixed the same way.
+  - The sun's lens flare spawns its sprites every tick and each lives two
+    original ticks, so at 120 about four times as many were drawn over each
+    other, and its fade in and out ran four times as fast.
+  - In arena battles, the wait between reinforcements (10 ticks) was never
+    converted: at 120 enemies appeared four times as fast.
+  - A mini-game's spawner and an object's two random effects rolled their
+    chance every tick, and a character's flicker counted down every tick;
+    they now roll and count once per original tick. Three animal timers
+    and one enemy's rare special moves got the same exact cadence.
+- Fixed offline: nine enemies and objects (animals jumping down, enemies
+  landing from a leap or a fall, three weapon objects) decide that they have
+  landed by adding their vertical speed to their height and comparing it with
+  the ground. Their fall moves a tick's share of that speed, so the check
+  looked a whole original tick ahead: at 120 they snapped to the ground up to
+  three ticks early. It now adds a tick's share.
+- Fixed offline: two enemies turned toward Amaterasu by a stock-unit step
+  every tick, and the imps' dropped weapon moved by its stock speed every
+  tick (it slid about four times as far at 120). They now take a tick's
+  share. The turn-step survey now counts a converted time step on a turn's
+  own path (five weapon turns were already converted that way).
+- Fixed offline: a motion that does not loop answers "ended" on every tick
+  after its end, so a roll there that mostly does nothing (an animal's 1 in
+  4 to leave a resting pose, an enemy's waits) was retried four times as
+  often at 120. Between original ticks those tests now read "not ended"
+  unless the motion loops (two kinds, `notyetend` and, where the test leaves
+  no room for a window, `callend`). A boss's 98% choice between two paths,
+  drawn every tick once Amaterasu has stayed high up long enough, is now
+  decided on the original tick and kept until the next (`hold`).
+- Fixed offline: two chain-like effects integrate a spring chain once a
+  tick, and at 120 they swung and settled about four times as fast. Their
+  pushes, damping, positions and one's relaxation now take a tick's share.
+- Fixed offline: the lock-on retarget delay is set through the frame-rate
+  byte, which the port already doubles at 60, and its countdown was paced
+  too, so it took twice its original time at 60 and 120. It now counts every
+  tick from the length x N. A sound Amaterasu repeats every half second
+  (`frame % (fps / 2)`) played twice as often at 120; the divisor is now
+  scaled (`divn`).
+- Fixed offline: a countdown the port paces holds each value for N ticks.
+  A zero test that runs before its decrement (or reads the decrement's
+  result) saw 0 on the ticks after the original tick that stored it, so the
+  action came up to three ticks early, and a timer reloaded there ran each
+  cycle an original tick short (a four-tick cycle took three). 30 such tests
+  read "not yet" between original ticks (`notyet`, and `notyett` for the
+  timer families, which follows their mask): those whose zero side reloads
+  the timer with a nonzero value on every path. Countdowns that can rest at 0
+  (a hit lock, whose zero path is the normal one) are left alone: a "not
+  yet" there runs the active path between original ticks for as long as
+  the timer sits at 0. The first version took a change of the object's state
+  as enough and gated 131 tests; in play, smoke puffs then kept coming and
+  piled up over a battle's enemies at 60 and 120, and the 101 tests it could
+  not prove are back as in 1.0.1. `tools/early_countdowns.py --check` runs in
+  the suite and fails on an early test with neither a row nor a review, and
+  on any "not yet" row on a countdown that can rest at 0.
+
+- Fixed offline: the integer-update census now has a separate closed review
+  of 302 previously unseen sites (`tools/find_uncensused.py --check`). Nine
+  clocks need pacing: the brush idle gap, three UV phases, two material
+  flipbooks, an emitter phase and two stage sound delays. Three compare
+  gates prevent duplicate emissions or sounds while their counters are
+  held. Input, stroke points, animation loops and other event counts remain
+  unchanged. The brush gap's idempotent nonpositive flag needs no gate.
+- Fixed offline: five camera-shake initializers derived their length from
+  the FPS byte although `476030` already paces the shared camera countdown.
+  `B663D8` is camera `B661E0+1F8`, read/decremented/stored at
+  `47603A/476076/476081`. Those five lengths lasted twice as long at both
+  60 and 120. Their FPS reads supply the stock context's 30/60 while the
+  objects gate is active;
+  constant duration writers and family-off behavior retain their units.
+  The subsequent local retention correction is described below.
+- Fixed offline: three battle scripts divided an already stock-paced
+  record's `+40` count by the FPS byte, reporting half the active battle
+  time at 60/120 and changing time-based results. Manager slots 2, 3 and 1
+  refer to plain pool records; the count increments at `23D789`. Reads
+  `4B1FE2/4FBD8B/538422` now use divisor 30 with actor pacing enabled.
+  New `stockfps` kind 43 preserves the original byte when the matching
+  family is off, preserves flags, and leaves the shared FPS byte untouched.
+
+  Validation for these 20 rows: all new windows passed 64-state directed
+  checks and each failed alone with its conversion broken. Suite seed 100
+  passed 66/66 expectations; the world verifier completed 583,296 window
+  cases and 23,376 call cases with zero problems. Coverage remains 12,485
+  of 12,485 settled. In-game validation remains pending.
+
+- Fixed offline: five camera-shake initializers copied a mode-table fade
+  factor into `B663D0`, whose reader already runs at stock cadence. At 120
+  the rewritten fourth-root factor therefore faded too slowly. `stockpair`
+  kind 44 uses the exact shipped pair locally, selected by live shadow mode
+  while camera gate `476030` is active. It preserves the original read at
+  mask zero and its result for unknown live modes. No shared table change
+  is needed, and the correction works with mode-table rewriting on or off.
+- Fixed offline: the five quake duration inputs now retain both stock
+  contexts, supplying 30/60 from the tick snapshot that also determines
+  camera pacing. Retention uses live mode because its original index is
+  read later; existing quakes keep their saved factor on later changes.
+  Ordinary pause/options stop flags exclude the five writers and reader.
+  Other modal paths remain bounded; their input units no longer depend on
+  proving a universal gameplay-only restriction. See
+  [quake retention and context](animation/misc_reading/quake_retention13.md).
+
+  Validation: all ten affected windows passed separately at 64 states and
+  N=1/2/4, and each failed alone with its correction broken. The directed
+  quake check passed 240 initializer cases and 2,400 camera updates; both
+  altered-retention and wrong-context negative controls were detected.
+  Suite seed 101 passed 69/69 expectations in 1,103 s on DLL SHA1
+  `2be402905848df22c3d260f7fa21499dec926051`. The full world verifier
+  completed 584,256 window cases and 23,376 call cases without problems.
+  Coverage remains 12,485 of 12,485 settled. In-game validation is pending.
+
+- Fixed: the brush cursor did not move with a gamepad at 120 (in play on
+  the first 1.0.2 builds; it did at 30). After the brush update `16C7E0`
+  moves the cursor, it drops the move if its squared length is under 16,
+  or under 64 when it turns back toward the previous point, and returns
+  the cursor to its last kept point `799360`. Full tilt is 0.095 x 127 =
+  12 a tick from one stick byte (`B6B12C`) and 20 from the other (`B6B142`,
+  x 1.65); scaled to a quarter, 3 and 5, so every move from the first was
+  dropped. New `limsq` kind 45 loads such a limit and multiplies it by s
+  twice (`16DB50`, `16DB59`; the loads use xmm12 and xmm13, too long for an
+  `sq` literal). Its proof follows every path from the load to the
+  register's rewrite: the only reads are the named compares, and the other
+  side of each is a sum of two squares made just before it. The mouse's
+  limit while it moves (0.1) is left: its moves are not scaled. With the
+  stick and mouse still, the cursor is drawn to a target within 50 by
+  min(8, 3000 / d^2) a tick and put on it inside 5; that pull ran every
+  tick, so two `lin` rows scale the 3000 and the cap (`16FC15`, `16FC21`).
+  With the mouse at rest the cursor glides onto the pointer by an unpaced
+  blend whose steps are not scaled, so at 120 it now settles within 1 of the
+  pointer instead of 4.
+
+  `tools/step_limits.py --check` runs in the suite. It reads each side of
+  every float test and clamp in the 962 functions the patch scales a value
+  in (3,490) as a polynomial in s, from the rows and families that put s
+  there. It fails on a step that carries s tested against a nonzero side
+  free of s that it has not reviewed: 57 are, mostly turn clamps (the angle
+  left, limited to the most a tick turns times s) and tests of pl00's
+  per-frame speed +E48. With the brush's limits read unscaled it fails at
+  `16DC73` and `16DCA7`. Three one-time reads of the same kind found
+  nothing to fix: a move derived from a position's history (x - prev)
+  tested against a constant anywhere in the game, a scaled step truncated
+  to an integer, and such a move stored and tested elsewhere.
+
+  Validation: both new windows passed 144 directed runs, and every run at
+  N=2 and N=4 failed with s forced to 1. Suite seed 105, with the check
+  above and its break run, passed 71/71 expectations in 1,198 s on DLL SHA1
+  `6452f99f44fe8df1e27597bb6d03003a4c2edd92`; the world verifier completed
+  566,208 window cases and 23,376 call cases without problems. Coverage
+  remains 12,485 of 12,485 settled. In-game validation is pending.
+
 **1.0.1**
 - The game starts at 120 fps by default (it was 60), with or without
   `okami_hackfix.ini`; where 120 is not offered it starts at 60. A saved

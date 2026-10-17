@@ -36,6 +36,14 @@ off that phase) for the two ways of being wrong a row's own proof cannot see:
             and paced her sprint charge on top of them, and at 120 she never
             left the jog.
 
+3. A never. frame_gates.h widens a frame-counter gate's mask to (mask + 1) N - 1,
+   so its block runs on ticks with fc & that == 0, first ticks of a stock
+   period. A row that keeps its step for the last tick (countlast, zlast, ulast:
+   fc + 1) never meets one there.
+     fgate  a last-tick row in a frame gate's block, or GATE_DEPTH calls below it
+   A first-tick row there (count, count2, notyet, zfirst, ...) runs on every
+   pass of the gate, as stock does: count 5F0A01 and 5F1871 (2026-10-10).
+
 Every finding must be in REVIEWED (read: not a problem, and why) or OPEN (a real
 problem left for a later round, and what it does); anything else fails.
 
@@ -60,7 +68,8 @@ ROOT = os.path.normpath(os.path.join(HERE, ".."))
 DOCS = os.path.join(ROOT, "docs", "animation")
 BASE = 0x180000000
 PACED_KINDS = ("count", "count2", "countlast", "gatefn", "gate0", "callgate", "notyet", "notyetneg",
-               "notyetb")
+               "notyetb", "notyetend", "hold", "callend", "notyett")
+LAST_KINDS = ("countlast", "zlast", "ulast")  # kept on the tick with (fc + 1) & mask == 0
 SPIN_DEPTH, PACED_DEPTH, GATE_DEPTH, YIELD_DEPTH = 6, 4, 3, 4
 TASK_WAIT = 0x4567C0  # main+4567C0(task, n): a loop that reaches it yields
 # functions that run a tick's scaled step a few calls below them
@@ -95,6 +104,13 @@ REVIEWED = {
         "tests (23C0C0, 210580, 210640, 49D500, 447130, 4A3F10) reads it",
     ("spin", 0x23D789, 0x493E20): "a battle record's elapsed time +40; the battle list's "
         "idle test 23C0C0 reads the list's +88, not it",
+    ("spin", 0x23EF8A, 0x493E20): "the battle list's reinforcement wait 9C4760 (spawner "
+        "23EF20); no spin pass reaches it: 493E20's case 1 calls 23C1C0 before the spin, "
+        "which moves the manager's phase +88 from 0 to 2 and sets B6B2A4 bit 27, and 23B9F0 "
+        "runs the lists (23D700 -> 23C420 -> the spawners) only in phase 0 with that bit clear",
+    ("spin", 0x23EF90, 0x493E20): "as 23EF8A (its zero test)",
+    ("spin", 0x23F0E7, 0x493E20): "as 23EF8A (the other spawner 23F070's store)",
+    ("spin", 0x23F0ED, 0x493E20): "as 23EF8A (23F070's zero test)",
     ("gate", 0x410540, 0x1B4F00): "cSSScroll opening samples its scale track (1B4F00 -> "
         "1B4860) at a time it counts itself; nothing under it advances a track",
     ("gate", 0x411570, 0x1B4F00): "as 410540, the closing",
@@ -121,6 +137,29 @@ REVIEWED.update({
     ("data", 0x46B7A8, 0x7A82D8): "as 47D0A9 (camera mode 46B080)",
     ("data", 0x479A1B, 0x7A82C0): "camera 4797A0: the blend is on its own 0.1 (the distance "
         "+200 toward 7A7C0C); the 7A82C0 entry feeds +1FC, which mode_constants corrects",
+    ("data", 0x46849E, 0x7A8178): "camera 468420: the 7A8178 pair is the stick velocity +3B4's "
+        "idle decay, which mode_constants corrects; the row scales pitch += +3B4, the integration",
+    ("data", 0x370026, 0x7A81E8): "quake initializer: stockfps changes only integer B6AC44 "
+        "feeding floor(fps/30)*15 into duration B663D8 at 370040; table read 37001C feeds "
+        "retention B663D0 at 37002F, not this integer input. Its separate local correction "
+        "is recorded in misc_reading/quake_retention13.md; this row does not scale a float",
+    ("data", 0x3703FF, 0x7A81E8): "as 370026: integer duration store 37041B; separate "
+        "table retention read/store 3703F5/370408",
+    ("data", 0x3C1DE8, 0x7A81E8): "as 370026: integer duration store 3C1E3C; separate "
+        "table retention read/store 3C1E03/3C1E0F",
+    ("data", 0x3C5FE6, 0x7A81E8): "as 370026: integer duration store 3C6008; separate "
+        "table retention read/store 3C5FE1/3C5FEF",
+    ("data", 0x37001C, 0x7A81E8): "stockpair intentionally replaces this local load with "
+        "exact immutable shipped bits selected by live shadow mode while camera gate476030 "
+        "is active; no further root/scale and no table write. Zero mask keeps the original "
+        "mutable-table load. verify_quakes covers table rewrites and family-off independently; "
+        "misc_reading/quake_retention13.md records consumers and saved-factor lifetime",
+    ("data", 0x3703F5, 0x7A81E8): "as 37001C: local stockpair feeds only B663D0 at370408; "
+        "does not apply a second correction to the mutable table",
+    ("data", 0x3C1E03, 0x7A81E8): "as 37001C: local stockpair feeds only B663D0 at3C1E0F; "
+        "objects pacing is independent of player movement and mode-table toggles",
+    ("data", 0x3C5FE1, 0x7A81E8): "as 37001C: local stockpair feeds only B663D0 at3C5FEF; "
+        "objects pacing is independent of player movement and mode-table toggles",
 })
 OPEN = {}
 
@@ -409,6 +448,34 @@ def main():
                 base = t - next(i for i in range(8) if fixed.get(t - i - 1) != fixed[t])
                 found.append(("data", site, base, "%s %s %X beside %X %s %s, which %s rewrites"
                               % (g, kind, site, a, m, o, fixed[t])))
+
+    # 3. frame gates: `test byte [fc], mask; jne skip`, its block up to skip
+    last_at = collections.defaultdict(list)
+    last_by_fn = collections.defaultdict(list)
+    for g, kind, site, ins in rows:
+        if kind in LAST_KINDS:
+            last_at[site].append(kind)
+            last_by_fn[fn_of(site)].append((site, kind))
+    gates = [int(x, 16) for x in re.findall(r"\{0x([0-9A-F]+), \d+, 0x[0-9A-F]+, \{",
+                                            open(os.path.join(ROOT, "src", "frame_gates.h")).read())]
+    in_gates = 0
+    for gate in gates:
+        k = idx.get(gate)
+        if k is None or insns[k + 1][1] != "jne" or target(insns[k + 1][2]) is None:
+            sys.exit("frame gate %X is not `test; jne`" % gate)
+        skip = target(insns[k + 1][2])
+        for a, m, o, s in insns[k + 2:]:
+            if a >= skip:
+                break
+            in_gates += sum(1 for r in rows if r[2] == a)
+            for kind in last_at.get(a, ()):
+                found.append(("fgate", a, gate, "%s %X in the frame gate %X's block" % (kind, a, gate)))
+            if m == "call" and target(o) is not None:
+                for fn, d in reach([fn_of(target(o))], GATE_DEPTH - 1).items():
+                    for site, kind in last_by_fn.get(fn, ()):
+                        found.append(("fgate", site, gate, "%s %X in %X, %d calls under the frame "
+                                      "gate %X" % (kind, site, fn, d + 1, gate)))
+    print("%d frame gates: %d rows in their blocks" % (len(gates), in_gates))
 
     # verdicts: a finding is keyed by (check, site, the function it was found against)
     problems, seen = [], set()

@@ -46,7 +46,7 @@
 #include <cstring>
 #include <initializer_list>
 
-#define OKAMI_HACKFIX_VERSION "1.0.1"
+#define OKAMI_HACKFIX_VERSION "1.0.2"
 
 static bool readableRange(const void* p, size_t n);  // defined with the probes
 static uint8_t* allocNear(uint8_t* nearTo, size_t size);  // defined with the patch helpers
@@ -267,7 +267,7 @@ struct Config {
     bool overlay = false;       // on-screen status line (mode, fixes, active gate set)
     bool speedLog = false;      // log every 100 ms player sample (speed + state)
     bool fixRunSpeed = true;    // real-time jog/run speed in 60 fps mode
-    bool fixAnimRate = true;    // keep the run/dash animation rate at its 30 fps value
+    bool fixAnimRate = true;    // keep walk/jog/run/dash animation rates at their 30 fps values
     UINT speedToggleVk = VK_F8; // hotkey that A/Bs the movement fixes (0 = none)
     char speedToggleName[32] = "F8";
     bool fixInputWindows = true;  // undo the doubly-compensated cPad::ActSet windows
@@ -3483,15 +3483,23 @@ static const uint32_t kJumpPickRva = 0x3B41E6;
 static const uint32_t kJumpPickResume = 0x3B41ED;
 static const uint8_t kJumpPickOrig[7] = {0x0F, 0x2F, 0x87, 0x48, 0x0E, 0x00, 0x00};
 
-// The animation rate is speed / 5.4 with a 0.7 floor, so halving the speed
-// also halves the leg cycle. These two sites load the speed just before that
+// The animation rate is speed / a stock-speed divisor with a floor, so halving
+// the speed also halves the leg cycle. These sites load the speed before that
 // divide; the detour scales the numerator back up so the rate matches 30 fps.
 static const uint32_t kAnimSites[][2] = {
+    {0x3B27D9, 0x3B27E1},  // walk handler (rate = speed / 1.1, floor 0.5; xmm0)
     {0x3B3275, 0x3B327D},  // jog handler  (rate = speed / 3.9)
     {0x3B35A2, 0x3B35AA},  // run handler  (rate = speed / 5.4)
     {0x3B38F7, 0x3B38FF},  // dash handler (rate = speed / 5.4)
 };
-static const uint8_t kAnimOrig[8] = {0xF3, 0x0F, 0x10, 0x8F, 0x48, 0x0E, 0x00, 0x00};
+static const uint8_t kAnimOrig[][8] = {
+    {0xF3, 0x0F, 0x10, 0x87, 0x48, 0x0E, 0x00, 0x00},
+    {0xF3, 0x0F, 0x10, 0x8F, 0x48, 0x0E, 0x00, 0x00},
+    {0xF3, 0x0F, 0x10, 0x8F, 0x48, 0x0E, 0x00, 0x00},
+    {0xF3, 0x0F, 0x10, 0x8F, 0x48, 0x0E, 0x00, 0x00},
+};
+static_assert(sizeof(kAnimSites) / sizeof(kAnimSites[0]) ==
+              sizeof(kAnimOrig) / sizeof(kAnimOrig[0]), "animation sites and originals");
 
 // ---------------------------------------------------------------------------
 // Jump and wall-jump height at 60 fps
@@ -4812,6 +4820,21 @@ static bool installScaleDetour(uint8_t*& caveCur, uint8_t* caveEnd, uint32_t sit
         logf("%s: installed at main+%X", what, siteRva);
     }
     return true;
+}
+
+// Recover stock-unit speed only for the animation-rate calculation.
+static int installPlayerAnimRates(uint8_t*& cur, uint8_t* end, float* scale) {
+    int done = 0;
+    for (size_t i = 0; i < sizeof(kAnimSites) / sizeof(kAnimSites[0]); i++) {
+        // The audited MOVSS's ModRM names xmm0 for walk and xmm1 for the others.
+        int reg = (kAnimOrig[i][3] >> 3) & 7;
+        if (installScaleDetour(cur, end, kAnimSites[i][0], kAnimSites[i][1], kAnimOrig[i],
+                               sizeof(kAnimOrig[i]), reg, scale, "anim rate",
+                               /*scaleAfter=*/true)) {
+            done++;
+        }
+    }
+    return done;
 }
 
 // The stick drift's detours (see kStickDriftSites): the multiply by the
@@ -8195,10 +8218,7 @@ static void installSpeedFix() {
                  (int)(sizeof(kSlopeSites) / sizeof(kSlopeSites[0])));
         }
         if (g_cfg.fixAnimRate) {
-            for (auto& site : kAnimSites) {
-                installScaleDetour(cur, end, site[0], site[1], kAnimOrig, sizeof(kAnimOrig), 1,
-                                   g_animScale, "anim rate", /*scaleAfter=*/true);
-            }
+            installPlayerAnimRates(cur, end, g_animScale);
         }
     }
     if (g_cfg.fixJumpHeight) {
@@ -8314,6 +8334,60 @@ static void updateSpeedFix() {
         }
     }
     applyJogParams(on, want > 0.05f ? want : 1.0f);
+}
+
+// ---------------------------------------------------------------------------
+// Offline animation-rate install and the real F9/A-B scale update.
+extern "C" __declspec(dllexport) int OkamiPlayerAnimRateSelfTest(const char* mainPath,
+                                                               const char* outDir) {
+    char path[MAX_PATH];
+    snprintf(path, sizeof(path), "%s\\report.txt", outDir);
+    FILE* rep = fopen(path, "w");
+    if (!rep) return 2;
+    HMODULE m = LoadLibraryExA(mainPath, nullptr, DONT_RESOLVE_DLL_REFERENCES);
+    if (!m) { fclose(rep); return 1; }
+    g_eng.main = (uint8_t*)m;
+    const size_t caveSize = 4096;
+    uint8_t* cave = allocNear(g_eng.main, caveSize);
+    if (!cave) { fclose(rep); return 1; }
+    g_playerScale = (float*)cave;
+    g_animScale = (float*)(cave + 4);
+    *g_playerScale = *g_animScale = 1.0f;
+    uint8_t* cur = cave + 64;
+    const size_t count = sizeof(kAnimSites) / sizeof(kAnimSites[0]);
+    if (installPlayerAnimRates(cur, cave + caveSize, g_animScale) != (int)count) {
+        fprintf(rep, "FAIL install\n"); fclose(rep); return 1;
+    }
+    fprintf(rep, "main %p\ncave %p\n", (void*)m, (void*)cave);
+    snprintf(path, sizeof(path), "%s\\cave.bin", outDir);
+    FILE* f = fopen(path, "wb");
+    if (!f) { fclose(rep); return 2; }
+    fwrite(cave, 1, caveSize, f); fclose(f);
+    snprintf(path, sizeof(path), "%s\\sites.bin", outDir);
+    f = fopen(path, "wb");
+    if (!f) { fclose(rep); return 2; }
+    for (const auto& site : kAnimSites) fwrite(g_eng.main + site[0], 1, 8, f);
+    fclose(f);
+    snprintf(path, sizeof(path), "%s\\states.csv", outDir);
+    f = fopen(path, "w");
+    if (!f) { fclose(rep); return 2; }
+    fprintf(f, "fps,muted,run,anim,scale\n");
+    static const int states[][4] = {
+        {30,0,1,1}, {60,0,1,1}, {120,0,1,1}, {120,1,1,1},
+        {120,0,1,0}, {120,0,0,1}, {60,0,1,1}, {30,0,1,1},
+    };
+    for (const auto& state : states) {
+        g_fps60 = state[0] != 30;
+        g_fpsImmsFast = state[0] == 120;
+        g_speedFixMuted = state[1] != 0;
+        g_cfg.fixRunSpeed = state[2] != 0;
+        g_cfg.fixAnimRate = state[3] != 0;
+        updateSpeedFix();
+        fprintf(f, "%d,%d,%d,%d,%.9g\n", state[0], state[1], state[2], state[3],
+                (double)*g_animScale);
+    }
+    fclose(f); fprintf(rep, "PASS\n"); fclose(rep);
+    return 0;
 }
 
 // ---------------------------------------------------------------------------

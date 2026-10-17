@@ -1,0 +1,2 @@
+# 2026-10-11: the follow-up list's readings (fps_followups08/09.spec carry the rows).
+fixed | pl00 3A9630: +1144, the lock-on retarget delay, counted down once a tick (at 0 +1110 takes +1108); its length is the fps byte (x 2 at 3AAD07), 60 at 60 and 120 against 30 at stock, so the count row it had here doubled the port's own doubling (4 s for 2 s at 60 and 120). The count row is gone and the stores 3AAD10, 3AAD7C, 3B9BD2 are the flag group's mulstores: 2 s (1 s) at every rate | 3AAD63

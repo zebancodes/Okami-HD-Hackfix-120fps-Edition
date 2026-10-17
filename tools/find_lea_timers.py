@@ -52,6 +52,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gamedir import GAME  # noqa: E402
+import event_counters  # noqa: E402
 
 BASE_IMAGE = 0x180000000
 FIELDS = ("0xe3c", "0xe3e", "0xe40", "0xe42", "0xe76")
@@ -195,6 +196,9 @@ def main():
                 if k >= 0 and funcs[k][0] <= a2 < funcs[k][1] \
                         and (funcs[k][0], off) in indexed:
                     dropped["field is an array index here"] += 1
+                    break
+                if a2 in event_counters.NOT_PACED:
+                    dropped["counts loops of a motion (event_counters.py)"] += 1
                     break
                 rows.append((a2, span, REGNO[dst], REGNO[src], off, lg.group(3),
                              bytes(img[a2:a2 + span])))

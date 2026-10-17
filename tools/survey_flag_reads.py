@@ -77,6 +77,12 @@ REVIEWED = {
                "the screen fade at 9CED58 (3E2A90, 68 callers: a colour flash or fade over "
                "n ticks, drawn and stepped by 3E2B60): its length +C = (1 << flag) x n, the "
                "elapsed count +E counting up to it a tick: mulflag 3E2ACE"),
+    0x3B35EA: ("F7", "movzx ecx, byte ptr [rip + 0x7b7653]",
+               "pl00 3B2CF0's sound every half second, fc % (fps / 2) == 0, the frame counter: at "
+               "120 every 30 ticks, a quarter second; divn 3B35F5 divides by it times N, "
+               "keeping ecx (the quotient is unread)"),
+    0x3B3943: ("F7", "movzx ecx, byte ptr [rip + 0x7b72fa]",
+               "pl00 3B2CF0's other half-second sound, as 3B35EA: divn 3B394E"),
 }
 # the fps byte's reads, by shape, read in their functions
 FPS_SHAPES = {
@@ -101,7 +107,9 @@ FPS_SHAPES = {
 # state handler's return may be its dispatcher's status.
 # `code` is what the reader guard sweeps: every read there of the field must
 # be one of `readers` (block copies through another pointer that only cover
-# it are listed as such), or the survey reports a problem.
+# it are listed as such), or the survey reports a problem. A dword wait is
+# fps / 2 (`shr r32, 1`); a byte wait (`size` 1) is the fps byte itself or
+# twice it (`add r8, r8`), with its own `why`.
 WAITS = {
     0x6C: dict(
         name="the memory-card screens' wait (cMcLoad, cMcSave, cMcBoot: +6C)",
@@ -121,6 +129,18 @@ WAITS = {
             0x14C66D: "14C620's countdown: +B0 - 1 a call while above 0 (14BD30 calls it)",
             0x14D12A: "a test of the wait against 0 (an item greyed while it runs)",
         }),
+    0x1144: dict(
+        name="the player's lock-on retarget delay (pl00 +1144)",
+        size=1,
+        code=((0x3A9630, 0x3ACDD0), (0x3B9A70, 0x3BB8D0)),
+        readers={
+            0x3AAD63: "3A9630's countdown: +1144 - 1 a tick (`add byte, -1; jne`), at 0 the "
+                      "lock-on target +1110 takes the candidate +1108",
+        },
+        why="%s: the fps byte (x 2 at 3AAD07), counted down once a tick, so 1 s (2 s) at 30 "
+            "and 60 and half that at 120; its countdown had a count row (3AAD63) on top, 2 s "
+            "(4 s) at 60 and 120: mulstore %X, the value stored times N, the countdown a "
+            "tick"),
 }
 STORES = ("mov", "movups", "movaps", "movdqu", "movdqa", "movss", "movsd", "movq", "movd")
 WAIT_WHY = "%s: fps / 2 ticks, counted down once a tick; half a second at 30 and 60, a " \
@@ -350,12 +370,31 @@ def fps_wait_read(md, img, a):
     if i0.mnemonic != "movzx" or ops[0].type != X.X86_OP_REG or ops[0].size != 4:
         return None, None, "not movzx r32, byte [fps]"
     r = gtc.reg_key(i0, ops[0].reg)
-    halved = False
+    halved = doubled = False
     for j in seq[1:8]:
         jo = j.operands
         text = "%X %s %s" % (j.address, j.mnemonic, j.op_str)
         if j.mnemonic in ("call", "ret", "retf") or j.mnemonic.startswith(("j", "loop")):
             return None, None, "%s before the store" % text
+        # a byte wait: `add r8, r8` once, then `mov byte [B + d], r8`
+        if r in gtc.reads(j) and j.mnemonic == "add" and not doubled and not halved and \
+                len(jo) == 2 and jo[0].type == jo[1].type == X.X86_OP_REG and \
+                jo[0].reg == jo[1].reg and jo[0].size == 1 and gtc.reg_key(j, jo[0].reg) == r:
+            doubled = True
+            continue
+        if r in gtc.reads(j) and not halved and j.mnemonic == "mov" and \
+                jo[0].type == X.X86_OP_MEM and jo[0].size == 1 and \
+                jo[1].type == X.X86_OP_REG and jo[1].size == 1 and \
+                gtc.reg_key(j, jo[1].reg) == r and j.reg_name(jo[1].reg) not in ("ah", "bh", "ch", "dh") and \
+                jo[0].mem.base not in (0, X.X86_REG_RIP, X.X86_REG_RSP) and \
+                not jo[0].mem.index and gtc.reg_key(j, jo[0].mem.base) != r:
+            d = jo[0].mem.disp
+            if d not in WAITS or WAITS[d].get("size", 4) != 1 or \
+                    not any(lo <= a < hi for lo, hi in WAITS[d]["code"]):
+                return None, None, "stored to byte +%X at %s, no byte wait read by hand" % (d, text)
+            return d, j.address, None
+        if doubled:
+            return None, None, "a doubled fps byte read by %s" % text
         if r in gtc.reads(j):
             if j.mnemonic == "shr" and not halved and jo[0].type == X.X86_OP_REG and \
                     gtc.reg_key(j, jo[0].reg) == r and jo[1].type == X.X86_OP_IMM and \
@@ -399,7 +438,7 @@ def wait_reader_problems(img):
                             continue
                         size = max(op.size, 1)
                         if not (op.mem.disp <= d < op.mem.disp + size or
-                                d <= op.mem.disp < d + 4):
+                                d <= op.mem.disp < d + w.get("size", 4)):
                             continue
                         if i.mnemonic != "lea" and not op.access & capstone.CS_AC_READ:
                             continue
@@ -486,7 +525,8 @@ def audit():
                                 "60 Hz, its stock time" % ACTUATER)
         elif what == "fps" and fps_wait_read(md, img, a)[2] is None:
             d, store, _why = fps_wait_read(md, img, a)
-            row.update(**{"class": "F7"}, evidence=WAIT_WHY % (WAITS[d]["name"], store))
+            row.update(**{"class": "F7"}, evidence=WAITS[d].get("why", WAIT_WHY) %
+                       (WAITS[d]["name"], store))
         elif what == "fps":
             shape = fps_shape(md, img, a)
             row.update(**{"class": "notyet"}, evidence=FPS_NOT_YET % FPS_SHAPES[shape])
@@ -502,7 +542,7 @@ def audit():
 def f7_sites():
     """the flag-group sites the REVIEWED F7 entries name"""
     return {int(x, 16) for why in (e[2] for e in REVIEWED.values() if e[0] == "F7")
-            for x in re.findall(r"\b(?:mulflag|gatefn|count) ([0-9A-F]{6})\b", why)} | {ACTUATER}
+            for x in re.findall(r"\b(?:mulflag|gatefn|count|divn) ([0-9A-F]{6})\b", why)} | {ACTUATER}
 
 
 def manifest_problems(manifest, rows=()):

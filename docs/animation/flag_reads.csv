@@ -194,8 +194,8 @@ site,function,what,instruction,class,evidence
 3AA305,3A9630,flag,"mov ecx, dword ptr [rip + 0x7c0935]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3AA325,3A9630,flag,"mov ecx, dword ptr [rip + 0x7c0915]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3AA34A,3A9630,flag,"mov ecx, dword ptr [rip + 0x7c08f0]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
-3AAD07,3A9630,fps,"movzx eax, byte ptr [rip + 0x7bff36]",notyet,"the fps byte (60 at 60 and 120) as a quantity: the player's 3A9630 and 3B9A70: fps (x 2) stored to +1144, half its stock time at 120; not converted yet"
-3AAD75,3A9630,fps,"movzx eax, byte ptr [rip + 0x7bfec8]",notyet,"the fps byte (60 at 60 and 120) as a quantity: the player's 3A9630 and 3B9A70: fps (x 2) stored to +1144, half its stock time at 120; not converted yet"
+3AAD07,3A9630,fps,"movzx eax, byte ptr [rip + 0x7bff36]",F7,"the player's lock-on retarget delay (pl00 +1144): the fps byte (x 2 at 3AAD07), counted down once a tick, so 1 s (2 s) at 30 and 60 and half that at 120; its countdown had a count row (3AAD63) on top, 2 s (4 s) at 60 and 120: mulstore 3AAD10, the value stored times N, the countdown a tick"
+3AAD75,3A9630,fps,"movzx eax, byte ptr [rip + 0x7bfec8]",F7,"the player's lock-on retarget delay (pl00 +1144): the fps byte (x 2 at 3AAD07), counted down once a tick, so 1 s (2 s) at 30 and 60 and half that at 120; its countdown had a count row (3AAD63) on top, 2 s (4 s) at 60 and 120: mulstore 3AAD7C, the value stored times N, the countdown a tick"
 3AFC10,3AFA90,flag,"mov ecx, dword ptr [rip + 0x7bb02a]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3AFC30,3AFA90,flag,"mov ecx, dword ptr [rip + 0x7bb00a]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3AFFD6,3AFA90,flag,"mov ecx, dword ptr [rip + 0x7bac64]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
@@ -215,8 +215,8 @@ site,function,what,instruction,class,evidence
 3B12CA,3B1250,flag,"mov ecx, dword ptr [rip + 0x7b9970]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3B161B,3B1560,flag,"mov ecx, dword ptr [rip + 0x7b961f]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3B163B,3B1560,flag,"mov ecx, dword ptr [rip + 0x7b95ff]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
-3B35EA,3B2CF0,fps,"movzx ecx, byte ptr [rip + 0x7b7653]",notyet,"the fps byte (60 at 60 and 120) as a quantity: fps / 2 as a count of ticks: a period fc % (fps / 2) in the player's 3B2CF0 (a sound every half second; the value stays live in ecx up to a call that takes rcx, so a scaled divisor needs its own kind), half its stock time at 120; not converted yet"
-3B3943,3B2CF0,fps,"movzx ecx, byte ptr [rip + 0x7b72fa]",notyet,"the fps byte (60 at 60 and 120) as a quantity: fps / 2 as a count of ticks: a period fc % (fps / 2) in the player's 3B2CF0 (a sound every half second; the value stays live in ecx up to a call that takes rcx, so a scaled divisor needs its own kind), half its stock time at 120; not converted yet"
+3B35EA,3B2CF0,fps,"movzx ecx, byte ptr [rip + 0x7b7653]",F7,"pl00 3B2CF0's sound every half second, fc % (fps / 2) == 0, the frame counter: at 120 every 30 ticks, a quarter second; divn 3B35F5 divides by it times N, keeping ecx (the quotient is unread)"
+3B3943,3B2CF0,fps,"movzx ecx, byte ptr [rip + 0x7b72fa]",F7,"pl00 3B2CF0's other half-second sound, as 3B35EA: divn 3B394E"
 3B4286,3B3FF0,flag,"mov ecx, dword ptr [rip + 0x7b69b4]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3B42A6,3B3FF0,flag,"mov ecx, dword ptr [rip + 0x7b6994]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3B4463,3B3FF0,flag,"mov ecx, dword ptr [rip + 0x7b67d7]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
@@ -233,7 +233,7 @@ site,function,what,instruction,class,evidence
 3B6AD5,3B68C0,flag,"mov ecx, dword ptr [rip + 0x7b4165]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3B706E,3B6E80,flag,"mov ecx, dword ptr [rip + 0x7b3bcc]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3B7095,3B6E80,flag,"mov ecx, dword ptr [rip + 0x7b3ba5]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
-3B9BCB,3B9A70,fps,"movzx ecx, byte ptr [rip + 0x7b1072]",notyet,"the fps byte (60 at 60 and 120) as a quantity: the player's 3A9630 and 3B9A70: fps (x 2) stored to +1144, half its stock time at 120; not converted yet"
+3B9BCB,3B9A70,fps,"movzx ecx, byte ptr [rip + 0x7b1072]",F7,"the player's lock-on retarget delay (pl00 +1144): the fps byte (x 2 at 3AAD07), counted down once a tick, so 1 s (2 s) at 30 and 60 and half that at 120; its countdown had a count row (3AAD63) on top, 2 s (4 s) at 60 and 120: mulstore 3B9BD2, the value stored times N, the countdown a tick"
 3BBD8D,3BBC90,flag,"mov ecx, dword ptr [rip + 0x7aeead]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3BBDB2,3BBC90,flag,"mov ecx, dword ptr [rip + 0x7aee88]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0
 3BC1A8,3BBC90,flag,"mov ecx, dword ptr [rip + 0x7aea92]",rumble,a rumble length for cPad::ActSet: the gate on cPad::Actuater 1825A0

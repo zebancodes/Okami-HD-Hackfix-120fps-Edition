@@ -158,10 +158,14 @@ def main():
     sites = find_sites(insns)
     targets = branch_targets(insns)
 
-    kept, dropped = [], []
+    import event_counters
+    kept, dropped, events = [], [], []
     for rva, ln, off in sorted(sites):
         if any(rva < t < rva + ln for t in targets):
             dropped.append(rva)          # a branch lands inside; not safe to relocate
+            continue
+        if rva in event_counters.NOT_PACED:
+            events.append(rva)           # counts loops or presses, not ticks
             continue
         kept.append((rva, ln, bytes(img[rva:rva + ln]), off))
 
@@ -200,6 +204,9 @@ def main():
     if dropped:
         print("skipped %d site(s) with a branch landing inside: %s"
               % (len(dropped), ", ".join("%06X" % d for d in dropped)))
+    if events:
+        print("left out %d event counter(s) (tools/event_counters.py): %s"
+              % (len(events), ", ".join("%06X" % d for d in events)))
 
 
 if __name__ == "__main__":

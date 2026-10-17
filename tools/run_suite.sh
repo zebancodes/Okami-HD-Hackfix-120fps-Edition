@@ -59,9 +59,43 @@ done
 job pass cave_pressure tools/verify_cave_pressure.py
 job fail cave_pressure_break_old tools/verify_cave_pressure.py --break old
 job pass check_patch_sites tools/check_patch_sites.py
-for s in mode_reads turn_limits turn_steps flag_reads double_pacing; do
+job pass player_anim_rates tools/verify_player_anim_rates.py
+for b in walk reg; do
+    job fail player_anim_rates_break_$b tools/verify_player_anim_rates.py --break "$b"
+done
+job pass chance_rolls tools/verify_chance_rolls.py
+job fail chance_rolls_break_gate tools/verify_chance_rolls.py --break gate
+job pass quakes tools/verify_quakes.py --seed "$SEED"
+for b in retention context; do
+    job fail quakes_break_$b tools/verify_quakes.py --seed "$SEED" --break "$b"
+done
+job pass chance_chains tools/verify_chance_chains.py
+job fail chance_chains_break_gate tools/verify_chance_chains.py --break gate
+job pass chance_decisions tools/verify_chance_decisions.py
+for b in em16 em85 em89 attempts; do
+    job fail chance_decisions_break_$b tools/verify_chance_decisions.py --break "$b"
+done
+job pass forward_movers tools/verify_forward_movers.py
+for b in missing double; do
+    job fail forward_movers_break_$b tools/verify_forward_movers.py --break "$b"
+done
+job pass heading_movers tools/verify_heading_movers.py
+job pass vector_movers tools/verify_vector_movers.py
+for b in missing double; do
+    job fail heading_movers_break_$b tools/verify_heading_movers.py --break "$b"
+    job fail vector_movers_break_$b tools/verify_vector_movers.py --break "$b"
+done
+job fail heading_movers_break_spin tools/verify_heading_movers.py --break spin
+for s in mode_reads turn_limits turn_steps flag_reads double_pacing event_counters; do
     job pass survey_$s tools/survey_$s.py
 done
+job pass survey_frame_events tools/frame_events.py --check
+job pass early_countdowns tools/early_countdowns.py --check
+job pass uncensused tools/find_uncensused.py --check
+job pass trace_steps tools/trace_steps.py --check
+job fail trace_steps_break_rows tools/trace_steps.py --check --break rows
+job pass step_limits tools/step_limits.py --check
+job fail step_limits_break_limsq tools/step_limits.py --check --break limsq
 job pass task_waits tools/verify_task_waits.py
 for b in n cap loop hist; do
     job fail task_waits_break_$b tools/verify_task_waits.py --break $b

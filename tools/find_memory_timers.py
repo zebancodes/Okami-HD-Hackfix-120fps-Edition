@@ -47,6 +47,11 @@ slowing it would change which object is addressed rather than how long
 anything lasts. Function bounds come from the PE's .pdata table, so the test
 is exact rather than a guess at a range.
 
+So are the counters tools/event_counters.py lists (NOT_PACED): they change
+once per loop of a motion or per button press, or index the brush stroke,
+which records one point a tick (Issun's flight with the Thief's Glove indexes
+it as `(+E3C + 0x107) << 4`, which the array-index test does not see).
+
     python tools/find_memory_timers.py
 """
 import collections
@@ -62,6 +67,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gamedir import GAME  # noqa: E402
+import event_counters  # noqa: E402
 
 BASE_IMAGE = 0x180000000
 FIELDS = ("0xe3c", "0xe3e", "0xe40", "0xe42", "0xe76")
@@ -192,6 +198,9 @@ def main():
         k = bisect.bisect_right(begins, a) - 1
         if k >= 0 and funcs[k][0] <= a < funcs[k][1]                 and (funcs[k][0], off) in indexed:
             dropped["field is an array index here"] += 1
+            continue
+        if a in event_counters.NOT_PACED:
+            dropped["counts events or recorded points (event_counters.py)"] += 1
             continue
         rows.append((a, s, kind, width, off, bytes(img[a:a + s])))
 

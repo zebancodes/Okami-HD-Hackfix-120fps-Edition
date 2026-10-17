@@ -122,11 +122,11 @@ SCALE_DETOURS = (
     ("kTurnRva", "kTurnOrig"),
 )
 SCALE_ARRAYS = (
-    ("kAnimSites", "kAnimOrig"),
     ("kSlopeSites", "kSlopeOrig"),
 )
 # arrays whose sites each have their own orig row, indexed in step
 SCALE_ROW_ARRAYS = (
+    ("kAnimSites", "kAnimOrig"),
     ("kAirGateSites", "kAirGateOrig"),
     ("kAirAccelSites", "kAirAccelOrig"),
     ("kSwimAccelSites", "kSwimAccelOrig"),

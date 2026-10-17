@@ -198,10 +198,15 @@ Kinds (each proven against the binary before it is emitted):
          zeroed on the others, so the rate changes once per stock tick,
          exactly as stock's does.
   ufirst, ulast   the same for a per-tick factor on a rate (drag, decay):
-         kept on the first or last tick, 1.0 on the others.
+         kept on the first or last tick, 1.0 on the others. With extra
+         ("scale", call), any of the four: `movss xmm2, x` that is only
+         ScaleXYZ's scale at that call (a vector's factor or growth).
   countlast   a factor applied to a rate by `mulss/divss xmmD, m32`, or a change
          added to it by `addss/subss xmmD, m32`: skipped except on the last
-         tick of each stock period, with F1's counters.
+         tick of each stock period, with F1's counters. Also an integer
+         counter's store, `mov m, r`, where a reload and a countdown meet: the
+         count changes at the end of each stock period, so its test at the
+         next period's start sees what stock's test sees (4ABE10's hop).
   argscale   `movaps xmmD, xmmS` copying a per-tick limit argument into a
          callee-saved register that the function only copies out of until its
          epilogue restores it: the copy is scaled by s.
@@ -268,6 +273,12 @@ Kinds (each proven against the binary before it is emitted):
          extra (target, "void"): a call of an update whose rax that call's
          caller never reads (on every path until it is rewritten), so the
          update runs once a stock tick from that call only.
+  callvec  a call of the vector mover 2DA3F0 (cMatrix::Apply(position, matrix
+         +50, v): position += the rotated v.xyz while v.w = 1) whose v is this
+         tick's displacement: the stub copies [rdx] to its own pool slot with
+         x, y and z times s and w as it is, points rdx at the copy and jumps
+         on. The caller's vector keeps its stock values. xmm4 is its scratch
+         (volatile, no argument of 2DA3F0); flags are dead at a call.
   count2 count, gated on the frame counter's bits from 1 up: it runs on ticks
          with ((fc >> 1) & (N-1)) == 0. For a step the port itself runs only
          on ticks of one parity (fc & 1): together, once every 2N ticks.
@@ -282,17 +293,81 @@ Kinds (each proven against the binary before it is emitted):
          next JL/JLE takes the declared path, or a JGE/JG falls through to it
          (1C8D80's `cmp eax, 10; jge close`), and both successors must
          overwrite these flags.
-  notyetb an unsigned limit test (`cmp` read by JB/JBE/JAE/JA): between stock
-         ticks the test is skipped with ZF = SF = OF = 0 and CF = 1, "below";
-         JB/JBE take, JAE/JA fall through to, the declared path (the slot-8
-         effect spawners' `cmp al, 2; jb`). Both successors must overwrite
-         these flags.
+  notyetb an unsigned limit test or float chance (`cmp`/`comiss`/`ucomiss`
+         read by JB/JBE/JAE/JA, also through an unconditional `jmp`): between
+         stock ticks the test is skipped with ZF = SF = OF = 0 and CF = 1,
+         "below"; JB/JBE take, JAE/JA fall through to, the declared path (the
+         slot-8 effect spawners' `cmp al, 2; jb`). Both successors must
+         overwrite these flags.
+  notyett notyet on the zero test of a countdown one of the timer families
+         (action, memory or lea timers: action_timers.h and its kin) paces:
+         its mask is theirs, mirrored by the runtime into the group's byte at
+         [8g + 3] while the group is on, so the test reads "not yet" on the very ticks
+         their decrement skips, and never while they are off (the decrement
+         would then run on a 0 and wrap). extra (the not-yet path, the
+         decrement): the decrement lies in a timer family's patched range and
+         stores the field the test reads (the same displacement).
+  notyet also takes the decrement itself (`sub r, imm`, `add r, imm`,
+         `dec r`) as the flag source, with plain `mov` stores before the
+         branch: a count row on the store leaves the register's decrement
+         running between stock ticks, which held, keeps its register value
+         and only its flags read "not yet".
+  notyetend the motion advance's "ended" answer, `test al, al` straight
+         after a call of 4B9C80, 239420 or 4B9B70 whose rcx is a non-volatile
+         register R (`mov rcx, R` before it, R written nowhere between). A
+         non-looping motion reports its end on every tick after it, a looping
+         one once a loop (the header at [R + F38]: magic 'mtb3', byte 7 bit 0
+         the loop flag). Between stock ticks, unless R's current motion loops,
+         the test reads al = 0 ("not ended": ZF = PF = 1, CF = SF = OF = AF =
+         0), so what the end block decides afresh every tick (a roll that
+         mostly does nothing) is decided once a stock tick; a looping motion's
+         once-a-loop answer is left alone. Its one flag reader must be the
+         next je/jne, the declared path the ZF = 1 side; flags dead after.
+  divn   `div r32` whose divisor is the fps byte halved (`movzx r32, byte
+         [fps]; shr r32, 1` on the straight line before it, nothing else
+         writing r32, no way in): `fc % (fps / 2)`, a period of half a second
+         at 30 and 60 and a quarter at 120. The stub divides by r32 x N (the
+         flag group's N, fps / 60 while the mode byte reads 1) and restores
+         r32 (push; imul r32, [N]; div; pop), so the remainder is the stock
+         period's and the register as it was; the quotient must be unread
+         after the div until rewritten (a call ends it).
+  stockfps `movzx r32, byte [fps]` feeding either seconds from the stock-paced
+         manager count or floor(fps/30)*15 for the stock-paced camera quake.
+         Read 30 for battle seconds, or the stock context's 30/60 for camera
+         quakes, while the matching family is paced. A zero mask retains the
+         original byte. Both paths preserve incoming flags.
+  stockpair a mode-indexed movss of the quake retention pair, feeding only
+         the camera's B663D0 store. While its whole-function gate is active,
+         load the exact shipped pair from private bytes using the live shadow
+         mode; a zero mask retains the original mutable-table read.
+  hold   a compare whose outcome is decided once a stock period: on a stock
+         tick it runs and its flags, with fc + 1, go to its own 16-byte slot
+         (the counter slot after its own); on the other ticks of that period
+         the saved flags are loaded instead (a stale slot: the compare runs).
+         The slot is the site's, not an object's: for a class one object at a
+         time runs (a boss). The flags must be dead after the next branch.
+  callend a call of an integer random generator (1BD480, 1BD6D0) in the
+         straight line of a motion advance's ended side (as notyetend's draw
+         test), whose `test al, imm; jne` then does nothing: the call's rel32
+         retargeted at a stub that, between stock ticks while the object's
+         motion does not loop, returns eax = -1 at once (no draw: the test
+         reads nonzero), and otherwise jumps on to the generator. For an end
+         block whose test has no room for a window (a join after it). rax
+         must be unread on the not-yet path until it is rewritten or returned.
   smode  `sub r8, [mode byte]` in a count gate: on stock ticks at N > 1 it
          subtracts the stock context's mode (the shadow byte, copied to
          [8g+2]) instead of the pinned real one; at N = 1 it is the original.
   imuln  `div r32` by the mode byte (its divisor loaded from it in the same
          run of code): the quotient, a duration in ticks, is multiplied by N
          right after (`imul eax, [N]`). The flags must be dead after it.
+  limsq  `movss xmmN, [rip + K]`, a limit on the squared length of this tick's
+         step (a step the manifest scales by s elsewhere): the detour loads K
+         and multiplies it by s twice, so the test of the step's squared
+         length decides as stock's per-tick test does. N is callee-saved
+         (xmm6-15); every path from the load reads it only at the manifest's
+         comiss/ucomiss before rewriting it, and the other side of each is
+         a sum of two squares made on a straight line before it. Any length
+         of instruction (the 8-byte `sq` literal cannot take a REX prefix).
 
 Every stub also counts its passes in a probe dword (inside pushfq/popfq), so
 the log can say how often each site runs in the game.
@@ -331,7 +406,7 @@ AUDITED_MAIN_SHA1 = "703d292ab2cb50cc9e237e44722dec51d956b79c"
 GROUPS = ("sky", "swing", "human", "effect", "emitter", "turn", "scenery", "objects", "mode",
           "repeat", "actor", "menu", "steer", "flag", "skip", "player")
 MAX_GROUPS = 16
-GROUP_STRIDE, ZERO_OFFSET, INTN_OFFSET = 8, 0x80, 0xC0
+GROUP_STRIDE, ZERO_OFFSET, LIVE_MODE_OFFSET, INTN_OFFSET = 8, 0x80, 0x88, 0xC0
 COUNTER_OFFSET, SLOT = 0x100, 16
 LITERAL_OFFSET, PROBE_OFFSET, CODE_OFFSET = 0x8100, 0x8900, 0xC900
 MAX_COUNTERS = (LITERAL_OFFSET - COUNTER_OFFSET) // SLOT
@@ -344,11 +419,21 @@ KIND = {"lin": 0, "sq": 1, "src": 2, "dst": 3, "pre": 4, "root": 5, "gatefn": 6,
         "callscale": 24, "callblend": 25, "mulflag": 26, "callgate": 27, "mulstore": 28,
         "blend": 29, "blendr": 30, "srcblend": 31, "immstore": 32,
         "srcroot": 33, "notyetneg": 34, "notyetb": 35,
-        "dstn": 36}
-CALL_KINDS = ("callscale", "callblend", "callgate")
+        "dstn": 36, "callvec": 37, "notyetend": 38, "hold": 39, "callend": 40, "divn": 41, "notyett": 42,
+        "stockfps": 43, "stockpair": 44, "limsq": 45}
+CALL_KINDS = ("callscale", "callblend", "callgate", "callvec", "callend")
+# callvec's targets: the movers that take this tick's displacement vector in rdx
+VEC_MOVERS = {0x2DA3F0}
 # kinds with F1's {ticks, counted, last, passes}
 COUNTED = ("gatefn", "count", "gate0", "countlast", "count2", "notyet", "notyetneg", "notyetb",
-           "smode", "callgate")
+           "smode", "callgate", "notyetend", "hold", "callend", "notyett")
+# notyetend: the motion advances (the advance, cEm's at its rate, start-and-
+# advance) and where their object keeps its motion: [obj + F38] -> header,
+# dword 0 the magic 'mtb3' (4B9CD4 compares it with 6B44F0), byte 7 bit 0 the
+# loop flag (4B9F52, 4B9FCF)
+MOTION_ADVANCES = (0x4B9C80, 0x239420, 0x4B9B70)
+MOTION_FIELD, MOTION_MAGIC_RVA = 0xF38, 0x6B44F0
+NONVOLATILE = ("rbx", "rbp", "rsi", "rdi", "r12", "r13", "r14", "r15")
 ONE_OFFSET = ZERO_OFFSET + 4   # float 1.0
 MODE_BYTE = tr.MODE_BYTE
 # pushfq; and dword [rsp], ~(OF|SF|ZF); popfq: "above zero" for a signed test
@@ -357,13 +442,17 @@ NOT_YET_FLAGS = b"\x9C\x81\x24\x24\x3F\xF7\xFF\xFF\x9D"
 NOT_YET_NEG_FLAGS = b"\x9C\x81\x24\x24\x3F\xF7\xFF\xFF\x81\x0C\x24\x80\x00\x00\x00\x9D"
 # notyetb: ZF = SF = OF = 0 and CF = 1, "below" for an unsigned compare
 NOT_YET_BELOW_FLAGS = b"\x9C\x81\x24\x24\x3F\xF7\xFF\xFF\x81\x0C\x24\x01\x00\x00\x00\x9D"
+# notyetend: `test al, al` of al = 0: CF = AF = SF = OF = 0, ZF = PF = 1
+NOT_ENDED_FLAGS = b"\x9C\x81\x24\x24\x2A\xF7\xFF\xFF\x81\x0C\x24\x44\x00\x00\x00\x9D"
 CVEC4 = "??0cVec@math@wk@@QEAA@MMMM@Z"     # wk::math::cVec::cVec(float, float, float, float)
 CVEC_ADD = "??YcVec@math@wk@@QEAAAEAV012@AEBV012@@Z"          # cVec::operator+=(const cVec&)
 CVEC_MULF = "??XcVec@math@wk@@QEAAAEAV012@M@Z"                # cVec::operator*=(float)
 CVEC_SCALE = "?ScaleXYZ@cVec@math@wk@@SAXAEAV123@AEBV123@M@Z"  # ScaleXYZ(out, in, float)
 CVEC_TIMES = "??DcVec@math@wk@@QEBA?AV012@M@Z"                  # cVec::operator*(float) const
+CVEC_SCALE4 = "?Scale@cVec@math@wk@@SAXAEAV123@AEBV123@M@Z"     # Scale(out, in, float): all four lanes
 assert len(GROUPS) <= MAX_GROUPS and MAX_GROUPS * GROUP_STRIDE <= ZERO_OFFSET
 assert ONE_OFFSET + 4 <= INTN_OFFSET and INTN_OFFSET + 4 * MAX_GROUPS <= COUNTER_OFFSET
+TIMER_FAMILIES = ("action_timers.h", "memory_timers.h", "lea_timers.h")
 
 # (group, kind, rva, instruction as capstone prints it, extra, reason)
 #   lin/sq: extra = (constant rva, value)
@@ -598,6 +687,22 @@ MANIFEST = [
     ("effect", "pre", 0x1A02C0, "addss xmm0, dword ptr [rbx + 0x2ec]", None,
      "the strips' step (1A02A0: espStrip, esp38, and esp09/10/13/31/32/41 through it): "
      "scroll(+2EC) += rate(+2F0) a tick, wrapped to [0, 1); xmm0 is the rate"),
+    # The trail strips keep a history of their emitter's positions (+2D0, +273
+    # points): each tick it shifts by one and the position goes in at the head, so
+    # a strip shows its last n ticks, a quarter of the trail at 120 at full width
+    # (the green trail behind Amaterasu at a run). Between stock ticks the shift's
+    # guard reads "<= 0" and only the head is rewritten: points one stock tick
+    # apart, the head on her every tick.
+    ("effect", "notyetneg", 0x1A019C, "test edi, edi", 0x1A01ED,
+     "esp09's update (1A0180): the history shifts once a stock tick, the head moves "
+     "every tick"),
+    ("effect", "notyetneg", 0x1AAA8B, "test edi, edi", 0x1AABD8,
+     "esp32's update (1AAA50) with +310 = 1: its two edge histories (+2D0, +2D8) shift "
+     "once a stock tick, as 1A019C. Its other mode (each point eases toward the one "
+     "before by the call's argument) is left as it is"),
+    ("effect", "notyetneg", 0x1AD1BE, "test edi, edi", 0x1AD20D,
+     "esp41's update (1AD150) with no owner (+140 = 0): the history shifts once a stock "
+     "tick, as 1A019C"),
     ("effect", "dst", 0x1A8CB5, "movaps xmm1, xmm0", None,
      "esp25 (1A8C80), a model playing a motion: progress(+2F0) += rate(+2D8) a tick, "
      "and the model's frame is set from it; xmm1 is the rate's copy"),
@@ -1653,7 +1758,7 @@ MANIFEST = [
      "the same: +1230 -= 1 a tick while above 0"),
     ("actor", "count", 0x2D9615, "mov word ptr [rdi + 0xe40], r8w", None,
      "the same, while B6B2A0 bit 14 is set: the bob's phase +E40 += 1 a tick, in "
-     "degrees (the other branch's store, 2D96AB, is counted already)"),
+     "degrees (the other branch's store is 2D96AB's row)"),
     ("actor", "count", 0x2D9895, "mov word ptr [rdi + 0x1232], ax", None,
      "the same: +1232 -= 1 a tick while above 0"),
     ("actor", "count", 0x2D98B8, "mov word ptr [rdi + 0x1232], ax", None,
@@ -1785,8 +1890,6 @@ MANIFEST = [
      "em2b slot 16 (275020): +13A0 -= 1 a tick while above 0 (the dec: the register's "
      "value is tested after the store)"),
     # --- em2b's actions (274BB0 and 275020 dispatch them)
-    ("actor", "count", 0x2755EF, "mov byte ptr [rdi + 0x1394], al", None,
-     "em2b (275280): +1394 -= 1 a tick while above 0, then its next sub-state"),
     ("actor", "count", 0x275CE3, "mov word ptr [rbx + 0x138e], ax", None,
      "em2b (275A80): +138E -= 1 a tick while above 0, then state 0x802"),
     ("actor", "count", 0x276317, "dec ax", (0x27630B, 0x27631A, (0x27630B, 0x276312, 0x276315, 0x276317), None),
@@ -1965,11 +2068,6 @@ MANIFEST = [
      "em85 joint turn (5CCD90, as em16's 26B920): the limit in xmm3, copied to xmm6"),
     ("actor", "argscale", 0x5CCDB8, "movaps xmm7, xmm2", None,
      "the same: the limit in xmm2, copied to xmm7"),
-    ("actor", "count", 0x5CD6DE, "inc dword ptr [rcx + 0x3490]", None,
-     "em85 (5CD690, from its update every tick): +3490 += 1 a tick while +348C is not "
-     "above 0; past 3, +348C = 100"),
-    ("actor", "count", 0x5CD7AE, "inc dword ptr [rcx + 0x3490]", None,
-     "em85 (5CD760): the same"),
     ("actor", "srcblend", 0x5D17B0, "mulss xmm1, xmm8", None,
      "em86 (5D1080): x += (the target - x) x 0.1 a tick (xmm8's 0.1 is also passed to "
      "a call at 5D16D9: the copy is blended)"),
@@ -2154,9 +2252,10 @@ MANIFEST = [
      "stock ticks"),
     ("player", "count", 0x3AA814, "mov byte ptr [rsi + 0x117e], al", None,
      "pl00 update: +117E, +10 a tick: on stock ticks"),
-    ("player", "count", 0x3AAD63, "add byte ptr [rsi + 0x1144], 0xff", None,
-     "pl00 update: +1144, the lock-on retarget delay (B6AC44 x 2 ticks before +1110 "
-     "takes +1108), a tick each; skipped, the jne reads \"not yet\""),
+    # 3AAD63, +1144's countdown (the lock-on retarget delay), had a count row here
+    # until 2026-10-11: its length is the fps byte (x 2), which the port already
+    # doubles at 60, so with the count it lasted twice its stock time at 60 and
+    # 120; its stores are the flag group's mulstores now (survey_flag_reads WAITS)
     ("player", "count", 0x3AB234, "movss dword ptr [rsi + 0xe48], xmm0", None,
      "pl00 update: her speed +E48 x 0.5 when the rise meets a ceiling (+E54 > 1): once "
      "per stock tick, as stock's tick-long contact"),
@@ -2577,9 +2676,6 @@ MANIFEST = [
      "wp06 (385C50, sub-state 1): forward by 4 a tick within 60 of Amaterasu, "
      "otherwise 6: s of the per-tick step"),
     # --- pl04's three appendages (3A6120), one call per piece each tick ---
-    ("player", "count", 0x3A62A9, "inc word ptr [r14]", None,
-     "pl04 appendage: +414C[part] indexes its preset path, advancing one point per "
-     "stock tick while the model sits on the current point"),
     ("player", "count", 0x3A65A7, "mov word ptr [rdi + rbx*2 + 0x414c], ax", None,
      "pl04 appendage: +414C[part] counts down the 90-tick hold in state 5 while the "
      "model follows its target's position"),
@@ -3032,9 +3128,6 @@ MANIFEST = [
      "factor each tick: use 1-(1-0.05)^s"),
     ("player", "count", 0x3A835F, "mov word ptr [rdi + 0x115a], ax", None,
      "pl00 (3A80F0): +115A's ordinary decrement commits once per stock tick"),
-    ("player", "count", 0x3A8378, "add word ptr [rdi + 0x115a], -5", None,
-     "pl00 (3A80F0): +115A's conditional extra -5 acceleration also commits only on "
-     "stock ticks"),
     # pl00 state handlers (3CA320, 3C05C0)
     ("player", "count", 0x3CA9B9, "movss dword ptr [rsi + 0xe48], xmm0", None,
      "pl00 (3CA320, sub-state 5): persistent speed +E48 is multiplied by 0.1 once per "
@@ -3435,9 +3528,6 @@ MANIFEST = [
      "wp47 state 39A840: second +10F6 decrement commits on the same stock tick; the "
      "special global path can still force zero immediately"),
     # pl00 state handlers (3BC300, 3C1010)
-    ("player", "notyet", 0x3BC4C4, "test cx, cx", 0x3BC4D0,
-     "pl00 state 3BC300, state 3: hold +E3C's old-value zero transition between stock "
-     "ticks"),
     ("player", "lin", 0x3C10FD, "movss xmm3, dword ptr [rip + 0x2b8b07]",
      (0x679C0C, 0.1745329201221466),
      "pl00 state 3C1010, state 1: scale the continuous 10-degree per-tick target-turn "
@@ -3483,12 +3573,6 @@ MANIFEST = [
      "wp0d (388FD0): +E3C advances the two cyclic sine-scale waveforms by one count "
      "per stock tick"),
     # wp04 post-motion wait (384BE0)
-    ("player", "notyet", 0x384CFC, "test al, al", 0x384D04,
-     "wp04 (384BE0), state 3: while +E37 is held at zero between stock ticks, defer "
-     "the state transition to its next stock tick"),
-    ("player", "count", 0x384D06, "mov byte ptr [rbx + 0xe37], al", None,
-     "wp04 (384BE0), state 3: commit the optional three-tick post-motion +E37 "
-     "countdown once per stock tick"),
     # pl03 shared scale approach (3A4DF0)
     ("player", "blend", 0x3A4E3C, "movss xmm2, dword ptr [rip + 0x2d27ac]",
      (0x6775F0, 0.05000000074505806),
@@ -3587,10 +3671,6 @@ MANIFEST = [
      "pl00 selected-subactor updater 459D90: the same actor's +E3C animation phase "
      "gains 20 times the state-derived step once per stock tick, before its 0x384 cap"),
     # Pl00 linked-actor state 3D1330.
-    ("player", "count", 0x3D13F4, "mov word ptr [rbx + 0xe3c], ax", None,
-     "pl00 state 3D1330: while held input bitset B6B0D0 or its companion global is "
-     "active and +E3C exceeds 5, commit the conditional two-count decrease on stock "
-     "ticks"),
     ("player", "notyet", 0x3D145C, "test ax, ax", 0x3D148C,
      "pl00 state 3D1330: when +E3C is held at zero between stock ticks, defer its "
      "cleanup/transition until the next stock tick"),
@@ -4129,6 +4209,11 @@ MANIFEST = [
     ("objects", "lin", 0x331F73, "subss xmm0, dword ptr [rip + 0x345675]",
      (0x6775F0, 0.05000000074505806),
      "hm6f material 2 alpha: scale falling 0.05"),
+    ("objects", "scaledadd", 0x2E817C, "call qword ptr [rip + 0x388c7e]", None,
+     "et22 (2E7EB0, the brush technique 7 object, spawned by 174DB0 at 1785xx): sub-"
+     "states 0/1 move it by +1090 = (ground - spawn) / 10 a tick while +E3C counts 10 "
+     "(memory_timers.h, stock ticks): add s of the step, so it lands as stock does "
+     "instead of 4x past the ground"),
     # The two enemy/object material U phases wrap by whole units after these rates.
     ("objects", "lin", 0x2E84EC, "movss xmm1, dword ptr [rip + 0x4b7cd8]",
      (0x7A01CC, -0.009999999776482582),
@@ -4757,8 +4842,6 @@ MANIFEST = [
      "cCockGameOver: pace the +7E stage wait"),
     ("objects", "gatefn", 0x3FDB40, "push rbx", None,
      "cCockHappyPoint: pace the +168 display tally and +16C countdown together"),
-    ("objects", "count", 0x4004F1, "mov byte ptr [rbx + 0x39c], al", None,
-     "cCockLoading: pace the +39C loading animation counter"),
     ("objects", "count", 0x40059A, "inc dword ptr [rbx + 0x70]", None,
      "cCockLoading: pace the +70 loading animation counter"),
     ("objects", "lin", 0x232C8A, "movss xmm2, dword ptr [rip + 0x43fc9a]",
@@ -7331,6 +7414,63 @@ MANIFEST = [
      "Brush strokes: the approach's minimum step 0.5 a tick."),
     ("player", "lin", 0x16F76F, "movss xmm4, dword ptr [rip + 0x5057e1]", (0x674F58, 3.0),
      "Brush strokes: each entry's global +84565C grows by 3 a tick up to +845660."),
+    # The ink and the brush cursor, 2026-10-03 (found in play: ink refilled fast, the
+    # brush ran fast with a gamepad). The ink is [B205C0]+8, 0x3C00 a pot, changed only
+    # through 496500 (add, clamped), whose amount is the caller's argument: the census
+    # saw no self-update in the callers, and its verdict on 496521 read it as health.
+    ("player", "callgate", 0x17BF33, "call 0x180496500", (0x496500, "void"),
+     "Ink refill (17BE00, the brush's idle state 16C7E0 calls it once a tick): 70 a "
+     "tick (210 with the ink item; x3 after the gauge ran dry), 7.3 s a pot at 30: add "
+     "it once a stock tick. rax is read by nothing before 496E80 rewrites it."),
+    ("player", "callgate", 0x17BE6A, "call 0x180496500", (0x496500, "void"),
+     "Ink drain (17BE00) while 2DF250 answers no (pl00 +1010 bit 25): -64 a tick, once "
+     "a stock tick."),
+    ("player", "callgate", 0x16EAF6, "call 0x180496500", (0x496500, "void"),
+     "Brush drawing (16C7E0 state 2): -64 ink each tick a point is added with a gamepad "
+     "(B6B15C = 0) or without mouse motion, else each 6 px of mouse travel; a stroke "
+     "ends when it has drained a pot (16D7B3). Once a stock tick: a gamepad stroke "
+     "drains as at 30 (8 s a pot), a fast mouse stroke as stock's one a tick; a slow "
+     "mouse stroke drains less while drawing, which only the gauge shows, since the "
+     "evaluation sets the stroke's cost from +1EE8/+1EE4."),
+    ("player", "src", 0x16D988, "mulss xmm3, xmm9", None,
+     "Brush cursor with a gamepad (pad +20C = 1, 16C7E0 state 2): x = previous + "
+     "speed(799778) x stick x (1, or 2 with the fast button: xmm9) a tick; xmm9 is "
+     "this tick's step factor"),
+    ("player", "src", 0x16D99E, "mulss xmm0, xmm9", None,
+     "Brush cursor with a gamepad: y = previous - speed x stick x xmm9 a tick"),
+    ("player", "src", 0x16DD78, "mulss xmm1, xmm9", None,
+     "Brush cursor, B6B2A0 bit 8 mode: 799360 += speed(799774/8) x stick x xmm9 a tick"),
+    ("player", "src", 0x16DD9F, "mulss xmm2, xmm9", None,
+     "Brush cursor, B6B2A0 bit 8 mode: 799364 -= speed x stick x xmm9 a tick"),
+    # 2026-10-15 (found in play: the cursor did not move with a gamepad at 120). The
+    # move the two rows above scale, (7E71C4, 7E71C8) = this tick's position - the
+    # last, is dropped when its squared length is under 16 (under 64 going back),
+    # and the cursor returns to the last kept point 799360. Full tilt is 0.095 x 127
+    # = 12 a tick from B6B12C (20 from B6B142, x 1.65): 3 (5) at 120 once scaled,
+    # so every move from the first was dropped, and the second's under 80% tilt.
+    # These limits, x s^2, decide per tick as stock's do.
+    # The mouse's 0.1 (16DC3F, while it moves) stays: its moves are not scaled.
+    ("player", "limsq", 0x16DB50, "movss xmm12, dword ptr [rip + 0x507f33]",
+     (0x675A8C, 16.0, ((0x16DC73, 0x16DC4C),)),
+     "Brush cursor: a move whose squared length is under 16 is dropped (16DC73); "
+     "the move is this tick's step, s x stock's, so the limit is 16 x s^2"),
+    ("player", "limsq", 0x16DB59, "movss xmm13, dword ptr [rip + 0x507cc6]",
+     (0x675828, 64.0, ((0x16DCA7, 0x16DC4C),)),
+     "Brush cursor: a move back toward the last point is dropped under a squared "
+     "length of 64 (16DCA7): 64 x s^2, as the limit above"),
+    # With the stick and the mouse still, a cursor within 50 of a target the brush
+    # can act on is drawn to it, min(8, 3000 / d^2) a tick, and put on it inside 5
+    # (16FBF3..16FC84): cursor + pull goes to 7E71A8, which the next tick takes as
+    # the cursor (16E572..), so at 120 it closed in four times as fast.
+    ("player", "lin", 0x16FC15, "movss xmm1, dword ptr [rip + 0x629bef]", (0x79980C, 3000.0),
+     "Brush cursor's pull toward a nearby target while the stick and the mouse are "
+     "still: 3000 / d^2 a tick; xmm1 is read only by the cap's minss"),
+    ("player", "lin", 0x16FC21, "movss xmm6, dword ptr [rip + 0x629be7]", (0x799810, 8.0),
+     "Brush cursor's pull: at most 8 a tick; xmm6, the pull's length, is read only "
+     "by its copy into cVec * float at 16FC42"),
+    ("actor", "callgate", 0x2B17AD, "call 0x180496500", (0x496500, "void"),
+     "em60's grab (2B15F0, sub-state 3, from its update 2AB930): once +1534 passes 5, "
+     "the ink loses 0.006 x the maximum a tick: once a stock tick"),
     # Camera modes (dispatched by 476B00, 4760E0 and 475C70), 2026-09-30. Their 2DA570
     # approaches are the survey's "camera: read as a whole elsewhere" rows: a constant
     # factor gets callblend, a factor from a mode table mode_constants.h already
@@ -8415,6 +8555,37 @@ MANIFEST = [
      (0x675A30, 0.30000001192092896),
      "cEnemyObj 3423D0: material 4's colour approaches its target by 0.3 a tick (xmm4 "
      "is only that factor)"),
+    # esf1 6453F0 (launched at the player by 645620 with vy = 10, a stock value):
+    # vy = (vy - 0.8) x 0.98, y += vy a tick. decay_factors.h made the 0.98 k^s, the
+    # 0.8 and the move stayed per tick: at 120 it settled at 16x stock's fall. In
+    # stock units, as the generic fall: s of the 0.8, s of the move.
+    ("effect", "lin", 0x645408, "subss xmm0, dword ptr [rip + 0x3486c]",
+     (0x679C7C, 0.800000011920929),
+     "esf1 6453F0: vy(+E54) = (vy - 0.8) x 0.98 a tick: s of the 0.8 (the 0.98 is "
+     "decay_factors.h's)"),
+    ("effect", "pre", 0x645425, "addss xmm0, dword ptr [rax + 4]", None,
+     "esf1 6453F0: y += vy a tick (xmm0 holds +E54, just stored): s of it"),
+    # The same objects' pop-up path (the state before the fall): vy += 1 (2097C0) or
+    # 2 (the others) a tick, a lift, then the 0.6 gravity phase_steps.h scales,
+    # then y += vy: the lift and the move were left unscaled, so at 120 the pop rose
+    # many times too fast to its height. lin on the lift, pre on the move.
+    ("objects", "lin", 0x209955, "addss xmm0, dword ptr [rip + 0x4682ab]", (0x671C08, 1.0),
+     "cKiType 2097C0 pop-up: vy(+E54) += 1 a tick against phase_steps.h's 0.6: s of it"),
+    ("objects", "pre", 0x209974, "addss xmm0, dword ptr [rax + 4]", None,
+     "cKiType 2097C0 pop-up: position.y += +E54 a tick (xmm0 holds it, just stored), "
+     "as 20981F"),
+    ("objects", "lin", 0x368973, "addss xmm0, dword ptr [rip + 0x309499]", (0x671E14, 2.0),
+     "cKiType014/vt4a..4c 368790 pop-up: vy += 2 a tick: s of it"),
+    ("objects", "pre", 0x368999, "addss xmm0, dword ptr [rax + 4]", None,
+     "cKiType014/vt4a..4c 368790 pop-up: position.y += +E54 a tick, as 36884E"),
+    ("objects", "lin", 0x369215, "addss xmm0, dword ptr [rip + 0x308bf7]", (0x671E14, 2.0),
+     "cKiType017 369090 pop-up: vy += 2 a tick: s of it"),
+    ("objects", "pre", 0x36923B, "addss xmm0, dword ptr [rax + 4]", None,
+     "cKiType017 369090 pop-up: position.y += +E54 a tick, as 3690F6"),
+    ("objects", "lin", 0x369BF5, "addss xmm0, dword ptr [rip + 0x308217]", (0x671E14, 2.0),
+     "cKiType018/vt53 369A70 pop-up: vy += 2 a tick: s of it"),
+    ("objects", "pre", 0x369C1B, "addss xmm0, dword ptr [rax + 4]", None,
+     "cKiType018/vt53 369A70 pop-up: position.y += +E54 a tick, as 369AD6"),
     ("objects", "pre", 0x36884E, "addss xmm0, dword ptr [rax + 4]", None,
      "cKiType014/vt4a..4c 368790: position.y += +E54 a tick (xmm0 holds +E54, just "
      "stored); its gravity 0.6 is phase_steps.h's"),
@@ -8740,19 +8911,221 @@ MANIFEST = [
     ("objects", "notyet", 0x651F28, "test cl, cl", 0x651F58,
      "ut35 651DC0: `test cl, cl; jns` on the old value: between stock ticks \"not yet\", "
      "so the effect comes on a stock tick"),
+    # 20E920, the generic fall (22 calls: villagers 305840, items cItemObj, an0c's
+    # hops, cCarryObj, wp0b, ut52, utd1, ...): vy(+E54) -= ts x g, then y += vy, a
+    # tick. The port put ts into the gravity only, so a fall went 4x as far at 120
+    # and a hop 4x as high. Seeds (an0c 2/2.5/4, ut52's -0.3 floor) are stock
+    # constants and launch_velocities.h made the port's ts x K launches stock too,
+    # so vy is in stock units, as pl00's: the move takes s (y += s x vy), and the
+    # landing look-aheads that read y + vy look one current tick ahead.
+    ("objects", "pre", 0x20E954, "addss xmm1, dword ptr [rax + 4]", None,
+     "20E920, the generic fall: y += vy a tick, vy in stock units (its gravity is "
+     "ts x g): xmm1 is vy, scaled first; it is stored to y and dead after"),
+    ("actor", "src", 0x1EE7D4, "addss xmm1, dword ptr [rsi + 0xe54]", None,
+     "an0c 1EE670: the hop's landing test y + vy <= ground, vy in stock units "
+     "(20E920): y + s x vy"),
+    ("actor", "src", 0x1ED0D0, "addss xmm1, dword ptr [rsi + 0xe54]", None,
+     "an0c 1ECF50: the same landing test"),
+    ("player", "pre", 0x387E5D, "addss xmm1, dword ptr [r9 + 4]", None,
+     "wp0b 387D10: its landing test y + vy <= ground after its own ts x 0.3 gravity "
+     "(vy in stock units, moved by 20E920): xmm1 = vy, scaled; dead after the compare "
+     "(a call, or 387EDD overwrites it)"),
+    # The camera's mode exits read the player's per-tick speed (476B00, rsi = the
+    # player from 2DBAC0): at 120 a walk (0.27 a tick) no longer passed 1.
+    ("objects", "srcx", 0x476BE2, "comiss xmm0, dword ptr [rip + 0x1fb21b]", None,
+     "camera 476B00, mode 6: leaves it when the player's +E48 > 0.1 a tick: s of 0.1"),
+    ("objects", "srcx", 0x476E1B, "comiss xmm0, dword ptr [rip + 0x1fade6]", None,
+     "camera 476B00, mode 5: leaves it when the player's +E48 > 1 a tick with the "
+     "stick held: s of 1"),
+    # ut35's speed +E48 is per tick (2DA460 moves it whole) and its states do
+    # v += ts x a, v *= 7A8160[mode] (k^ts by mode_constants.h): the airborne
+    # copies' rate-dependent equilibrium (kAirAccelSites), which settles at the
+    # same speed per tick, 4x the real speed at 120. The census took the ts as
+    # the port's own fix. An acceleration takes ts^2: K x s on each constant.
+    ("objects", "lin", 0x651995, "mulss xmm0, dword ptr [rip + 0x6cbe3]",
+     (0x6BE580, 0.06000000238418579),
+     "ut35 6518E0: v += ts x 0.06 a tick while +E3E is under 30 (the push after a "
+     "press), against k^ts: x s, so ts^2"),
+    ("objects", "lin", 0x6519C4, "mulss xmm0, dword ptr [rip + 0x2d558]",
+     (0x67EF24, 0.45000001788139343),
+     "ut35 6518E0: v += ts x 0.45 a tick, against k^ts: x s, so ts^2"),
+    ("objects", "lin", 0x651BF5, "mulss xmm0, dword ptr [rip + 0x6c987]",
+     (0x6BE584, 0.06499999761581421),
+     "ut35 651B40: v += ts x 0.065 a tick while +E3E is under 30, as 651995"),
+    ("objects", "lin", 0x651C24, "mulss xmm0, dword ptr [rip + 0x24008]", (0x675C34, 0.25),
+     "ut35 651B40: v += ts x 0.25 a tick, as 6519C4"),
+    ("objects", "lin", 0x651EBB, "mulss xmm1, dword ptr [rip + 0x5d111]",
+     (0x6AEFD4, 0.001999999862164259),
+     "ut35 651DC0: v = k^ts x v + ts x 0.002 a tick, as 6519C4"),
     ("effect", "lin", 0x3633B0, "addss xmm0, dword ptr [rip + 0x30ea50]", (0x671E08, 0.5),
      "esfd 363210 case 3: +E54 += 0.5 a tick while +E3C is under its table's limit "
      "(then +E54 x 0.98, decay_factors.h; state 3 ends when +E54 < 0, 362D10)"),
     ("effect", "count", 0x3633B8, "mov word ptr [rbx + 0xe3c], r8w", None,
      "esfd 363210 case 3: +E3C += 1 a tick up to the table's limit: the store is "
      "skipped between stock ticks"),
-    # pl00 3B2CF0, her ground movement, has no rows: the run fix (FixRunSpeed,
-    # kJogParams in dinput8_proxy.cpp) rewrites its constants in .data, which no
+    # pl00 3B2CF0, her ground movement: the run fix (FixRunSpeed, kJogParams in
+    # dinput8_proxy.cpp) rewrites its jog constants in .data, which no
     # patched-range check sees. Rows on its acceleration (3B2FBC) and on the
-    # sprint charge +1174 (3B31C4, 3B31E5, 3B3588) compensated a second time: the
+    # sprint charge +1174 (3B31C4, 3B31E5) compensated a second time: the
     # charge, counted on stock ticks against frames the run fix already x N,
     # took 8x stock's time at 120 and she never left the jog (4685584d, 10-02).
     # survey_double_pacing's "data" check refuses a row next to such a read.
+    # The dash after the charge is another matter: state 4 sets +1174 to the
+    # charge frames + 1 and +E3C to the charge frames + 150, so the frames
+    # cancel out of its length and only the 150 is in stock ticks.
+    ("player", "count", 0x3B3588, "inc ax",
+     (0x3B3581, 0x3B358B, (0x3B3581, 0x3B3588), None),
+     "pl00 3B2CF0 state 5, the dash: +1174 += 1 a tick from the charge frames + 1 up to "
+     "+E3C = the charge frames + 150 (3B3435), then state 8. The run fix's x N frames "
+     "cancel out, so the inc is skipped between stock ticks: 150 stock ticks, 5 s "
+     "(a quarter of that at 120 without it)"),
+    ("player", "srcblend", 0x3B352C, "mulss xmm1, xmm10", None,
+     "pl00 3B2CF0 state 5, the dash: +E48 += (target - +E48) x 0.1 a tick; the run fix "
+     "scales the target (xmm2, 3B351C), not the factor. xmm10's 0.1 (3B2D10) is read "
+     "again at 3B386E, 3B3B81 and 3B3B86: the copy is blended"),
+    ("player", "srcblend", 0x3B386E, "mulss xmm1, xmm10", None,
+     "pl00 3B2CF0 state 9, the top dash: the same approach toward [0xB0] x 1.3 + "
+     "ts x 6.9 (both scaled), as 3B352C"),
+    ("player", "immstore", 0x3B38E6, "mov dword ptr [rdi + 0xe48], 0x40dccccd", None,
+     "pl00 3B2CF0 state 9, the top dash: while bit 56 of the cKs key table (B6AD00) is "
+     "held, +E48 = 6.9 a tick, the speed the state otherwise approaches as ts x 6.9: "
+     "written as 6.9 x s"),
+    # pl00 3B2620, the walk (state 1): +E48 approaches ts x 1.1 by 0.2 a tick (0.03 on
+    # ground 8); on ground 0xF it first approaches ts x 0.5 by 0.2. The port scaled
+    # the targets, not the factors, so she reached walking speed 4x as fast at 120.
+    # On ground 0xF two approaches run a tick; with both converted she settles at
+    # 0.808 ts there instead of stock's 0.833 ts (3%), the rate of approach right.
+    ("player", "blend", 0x3B283B, "movss xmm2, dword ptr [rip + 0x2c00e9]",
+     (0x67292C, 0.20000000298023224),
+     "pl00 3B2620 state 1, the walk: xmm2 = 0.2, the factor of +E48 += (ts x 1.1 - "
+     "+E48) x 0.2 (3B289E) and on ground 0xF of (ts x 0.5 - +E48) x 0.2 (3B2863). Read "
+     "by nothing else: written (3B28F2, 3B2923, 3B2A61) or clobbered by a call first. "
+     "(3B289E has no window: 3B28A2 is a branch target)"),
+    ("player", "blend", 0x3B2894, "mulss xmm1, dword ptr [rip + 0x2c5ff4]",
+     (0x678890, 0.029999999329447746),
+     "pl00 3B2620 state 1, ground 8: +E48 += (ts x 1.1 - +E48) x 0.03 a tick"),
+    # Three state entries add a forward boost the port scaled (+E48 += ts x K), then
+    # cap it at the stock K with an unscaled compare and store: at 120 the cap
+    # almost never fired, and when it did it wrote a stock-tick speed. As the
+    # combo state's cap (3B75C8, 3B75D9).
+    ("player", "srcx", 0x3C5428, "comiss xmm1, dword ptr [rip + 0x2afb2d]", None,
+     "pl00 3C5350 (state 3F) entry: +E48 += ts x 7, then capped at the stock 7: compare "
+     "the current-rate +E48 with s of the cap; preserve the branch flags"),
+    ("player", "immstore", 0x3C5439, "mov dword ptr [rbx + 0xe48], 0x40e00000", None,
+     "pl00 3C5350 (state 3F) entry: the capped store, 7 written as 7 x s"),
+    ("player", "srcx", 0x3C591B, "comiss xmm0, dword ptr [rip + 0x2b015a]", None,
+     "pl00 3C57A0 (state 41) entry: +E48 += ts x 5, then capped at the stock 6: compare "
+     "with s of the cap"),
+    ("player", "immstore", 0x3C592C, "mov dword ptr [rbx + 0xe48], 0x40c00000", None,
+     "pl00 3C57A0 (state 41) entry: the capped store, 6 written as 6 x s"),
+    # pl00 3BEEE0, an aerial weapon attack, sub-state 1: +E54 (stock-tick units:
+    # the common step 3A9630 moves y by ts x +E54 and applies ts x 0.7 of
+    # gravity) gets + ts x 0.7 a tick for kind 0, which the port scaled, but
+    # - 0.4 (kind 1, from -10) or + 0.5 (kind 2) a tick unscaled: 4x the change
+    # per second at 120, 4x the height or plunge.
+    ("player", "lin", 0x3BF643, "subss xmm0, dword ptr [rip + 0x2ba629]",
+     (0x679C74, 0.4000000059604645),
+     "pl00 3BEEE0 sub-state 1, kind 1: +E54 -= 0.4 a tick: x s"),
+    ("player", "lin", 0x3BF676, "addss xmm0, dword ptr [rip + 0x2b278a]", (0x671E08, 0.5),
+     "pl00 3BEEE0 sub-state 1, kind 2: +E54 += 0.5 a tick: x s"),
+    # pl00 states that set the per-tick speed +E48 to a constant (a census
+    # candidate is a self-update, so a plain set never was one). Each moves her
+    # by +E48 every tick, whole (2DA460, 2DA410, the root step, or her matrix),
+    # or hands it to a state that does: 4x the distance at 120. As 3B75D9.
+    ("player", "immstore", 0x3B725B, "mov dword ptr [rbx + 0xe48], 0x3f8ccccd", None,
+     "pl00 3B71B0: +E48 = 1.1 on entry, then 2DA460 moves her by it every tick: 1.1 x s"),
+    ("player", "immstore", 0x65184D, "mov dword ptr [rax + 0xe48], 0x3f000000", None,
+     "ut35's update 6517C0: the player's +E48 (2DBAC0) = 0.5 a tick while she rides it"),
+    ("player", "immstore", 0x3C9737, "mov dword ptr [rdi + 0xe48], 0x3f000000", None,
+     "pl00 3C96A0: +E48 = 0.5 on entry, moved by it while +E3C (10, stock ticks) runs"),
+    ("player", "immstore", 0x3B5C38, "mov dword ptr [rdi + 0xe48], 0x3f800000", None,
+     "pl00 3B5B50: +E48 = 1 on entry; the state moves by root motion, the speed is "
+     "what a state it hands over to (a jump: the 2.0 x ts running-jump pick) reads"),
+    ("player", "immstore", 0x3B61DF, "mov dword ptr [rdi + 0xe48], 0x3f800000", None,
+     "pl00 3B6090 (state 6): +E48 = 1 on entry, as 3B5C38"),
+    ("player", "immstore", 0x3B6787, "mov dword ptr [rdi + 0xe48], 0x3f800000", None,
+     "pl00 3B6630 (state 7): +E48 = 1 on entry, as 3B5C38"),
+    ("player", "immstore", 0x3B6D4E, "mov dword ptr [rdi + 0xe48], 0x3f800000", None,
+     "pl00 3B6BF0 (state 8): +E48 = 1 on entry, as 3B5C38"),
+    ("player", "immstore", 0x3C0E9E, "mov dword ptr [rbx + 0xe48], 0xc0400000", None,
+     "pl00 3C0DA0, a hop back: +E48 = -3 with +E54 = 1.7, handed to the airborne state "
+     "(0x50301), which moves by +E48 a tick"),
+    ("player", "immstore", 0x3C0EBF, "mov dword ptr [rbx + 0xe48], 0xbf800000", None,
+     "pl00 3C0DA0: +E48 = -1 instead on maps 111/306/309, as 3C0E9E"),
+    ("player", "immstore", 0x3BD942, "mov dword ptr [rbx + 0xe48], 0xc0c00000", None,
+     "pl00 3BD890: +E48 = -6 on entry, then x 0.89 (decay_factors) and added to the "
+     "root step +EC8 every tick: 4x the distance at 120"),
+    ("player", "immstore", 0x3C54A9, "mov dword ptr [rbx + 0xe48], 0x3f800000", None,
+     "pl00 3C5350 (state 3F): +E48 = 1 when blocked on entry; the state moves by +E48 "
+     "(x the mode table) through 2DA410 every tick"),
+    ("player", "immstore", 0x3C55C5, "mov dword ptr [rbx + 0xe48], 0x3f800000", None,
+     "pl00 3C5350 (state 3F): +E48 = 1 every tick while blocked, as 3C54A9"),
+    ("player", "immstore", 0x3C899C, "mov dword ptr [r14 + 0xe48], 0x40800000", None,
+     "pl00 3C84B0, a weapon lunge: +E48 = 4, added to the root step every tick and x 0.85 "
+     "(decay_factors): 3.75x the distance at 120"),
+    ("player", "immstore", 0x3C8AAD, "mov dword ptr [r14 + 0xe48], 0x40800000", None,
+     "pl00 3C84B0: the other lunge's +E48 = 4, as 3C899C"),
+    ("player", "immstore", 0x3BCEC0, "mov dword ptr [r14 + 0xe48], 0x41700000", None,
+     "pl00 3BC710 sub-state 3, a dive: +E48 = 15, and every tick her position is set to "
+     "her matrix x (0, 0, +E48), 15 forward, for +E3C (25, stock ticks) or until she lands"),
+    # pl00 3C6080, a pull to the point +E10: each tick she moves +E48 toward it, then
+    # +E48 += 0.8 (0.4 in sub-state 1) up to 16. phase_steps.h scaled the growth by
+    # ts, as a phase; on a per-tick speed it is an acceleration (find_phase_steps
+    # NOT_STEPS), and the cap a per-tick speed: about 4x as fast at 120.
+    ("player", "sq", 0x3C624E, "addss xmm0, dword ptr [rip + 0x2e8daa]",
+     (0x6AF000, 0.7999999523162842),
+     "pl00 3C6080 sub-state 3: +E48 += 0.8 a tick, an acceleration: K x s^2"),
+    ("player", "srcx", 0x3C6256, "comiss xmm0, dword ptr [rip + 0x2af82f]", None,
+     "pl00 3C6080 sub-state 3: the cap test of +E48 against 16: s of the cap"),
+    ("player", "immstore", 0x3C6267, "mov dword ptr [rdi + 0xe48], 0x41800000", None,
+     "pl00 3C6080 sub-state 3: the capped store, 16 x s"),
+    ("player", "sq", 0x3C65E6, "addss xmm0, dword ptr [rip + 0x2b6c7a]",
+     (0x67D268, 0.3999999761581421),
+     "pl00 3C6080 sub-state 1: +E48 += 0.4 a tick: K x s^2"),
+    ("player", "srcx", 0x3C65EE, "comiss xmm0, dword ptr [rip + 0x2af497]", None,
+     "pl00 3C6080 sub-state 1: the cap test against 16, as 3C6256"),
+    ("player", "immstore", 0x3C6603, "mov dword ptr [rdi + 0xe48], 0x41800000", None,
+     "pl00 3C6080 sub-state 1: the capped store, as 3C6267"),
+    # Per-tick speed thresholds that pick a branch (tools/find_tick_thresholds.py;
+    # the jump path's are FixAirGates): at 120 the same real speed is a quarter
+    # of the per-tick value, so the comparison lands on the other side.
+    ("player", "srcx", 0x3CA808, "comiss xmm0, dword ptr [rip + 0x2a73f9]", None,
+     "pl00 3CA320 (state 56): the attack hitbox flag +F34 |= 0x80 (342D40's hit test) "
+     "while +E48 > 1 a tick: compare with s of 1"),
+    ("player", "srcx", 0x3CE9B7, "comiss xmm0, dword ptr [rip + 0x2a8c32]", None,
+     "pl00 3CE990 (\"moving\", for 3A9630's ground snap and the camera 47B79E): "
+     "standing with +E48 > 0.05 a tick: s of 0.05"),
+    ("player", "lin", 0x3CE9C4, "movss xmm0, dword ptr [rip + 0x2a7078]", (0x675A44, 1.5),
+     "pl00 3CE990: running with +E48 < 1.5 a tick (xmm0 = 1.5, read only by the "
+     "comiss at 3CE9CC): at 120 a full run (0.76 a tick) passed"),
+    ("player", "srcx", 0x3A7874, "comiss xmm0, dword ptr [rip + 0x2cd6dd]", None,
+     "pl00 3A75C0, blocked with the dash charge past stage 1: +E48 x 0.9 a tick "
+     "(decay_factors.h 3A787D) while +E48 >= 3 a tick: s of the 3"),
+    # wp objects whose update moves them by 23AD90's slow-motion dt x a speed a tick
+    # through 2DA410 with no row on the dt (the siblings' "slowmo" dst rows, or a
+    # callscale): speeds handed to a mover were never census candidates.
+    ("player", "callscale", 0x3A0097, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp55 state 0 (39FEF0): forward by dt x +E28 each tick: s of the per-tick move"),
+    ("player", "callscale", 0x38C2BB, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp11 (38C160): forward by dt x +E28 (the distance / 20, x 0.95 per bounce) each "
+     "tick: s of the move"),
+    ("player", "callscale", 0x39BDF2, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp47 (39BB10): forward by dt x +E48 (the distance / 100 x 2.5) each tick: s of "
+     "the move"),
+    ("player", "callscale", 0x39D016, "jmp 0x1802da410", (0x2DA410, "xmm1"),
+     "wp48 (39CE30): forward by dt x a constant each tick, a tail jump: s of the move"),
+    ("player", "lin", 0x39FDEA, "movss xmm1, dword ptr [rip + 0x2da362]",
+     (0x67A154, 0.05999999865889549),
+     "wp55 (39FDE0): the +C0/+C4/+C8 vector grows by 0.06 a tick through "
+     "cVec::operator+= up to 1, as wp51's 39F2F2: s of the step"),
+    ("player", "lin", 0x3B5B01, "movss xmm0, dword ptr [rip + 0x2c417f]", (0x679C88, 3.5),
+     "pl00 3B5710: on action 0x62 with +10E0 bit 0x20, variant 5 when +E48 >= 3.5 a "
+     "tick, else 3 (xmm0 = 3.5, read only by the comiss at 3B5B0C): at 120 the fast "
+     "variant was out of reach, as FixAirGates' running jump"),
+    ("player", "srcx", 0x3CA656, "comiss xmm0, dword ptr [rip + 0x2ab41f]", None,
+     "pl00 3CA320 (state 56) entry: +E48 += ts x 5, capped at the stock 6, as 3C591B"),
+    ("player", "immstore", 0x3CA667, "mov dword ptr [rsi + 0xe48], 0x40c00000", None,
+     "pl00 3CA320 (state 56) entry: the capped store, as 3C592C"),
     ("menu", "count", 0x407B92, "mov dword ptr [rcx + 0x84], eax", None,
      "cCockTimer 407B00: the count-up timer +84 += 1 a tick up to 0x57E04: the store "
      "is skipped between stock ticks (the stock context's rate; its count-down twin "
@@ -8786,6 +9159,2276 @@ MANIFEST = [
      "em8f 2D8C1C's spawner: its test, as 2513EA"),
     ("actor", "notyetb", 0x241264, "cmp al, 2", 0x241294,
      "em00..em03 241180: the spawner's test, as 2513EA"),
+    # First follow-up pass, 2026-10-06: per-tick chance chain and forward movers.
+    ("actor", "notyetb", 0x264945, "comiss xmm6, xmm0", 0x26498D,
+     "em16 update 264280, type 216: while in its distance/heading decision path, trial "
+     "1 has probability 0.003 each tick and may enter state 1401. All eight trials in "
+     "this chain now take the unsuccessful path between stock ticks; the update and "
+     "motion continue every tick."),
+    ("actor", "notyetb", 0x264992, "comiss xmm6, xmm0", 0x2649B8,
+     "em16 type 216 decision chain, trial 2 (0.003): failure goes to the next roll; "
+     "success requests state D01. Paced together with the other seven trials."),
+    ("actor", "notyetb", 0x2649BD, "comiss xmm6, xmm0", 0x2649E3,
+     "em16 type 216 decision chain, trial 3 (0.003): failure goes to the next roll; "
+     "success requests state 1601. Paced together with the other seven trials."),
+    ("actor", "notyetb", 0x2649E8, "comiss xmm6, xmm0", 0x264A0E,
+     "em16 type 216 decision chain, trial 4 (0.003): failure goes to the next roll; "
+     "success requests state 901. Paced together with the other seven trials."),
+    ("actor", "notyetb", 0x264A13, "comiss xmm6, xmm0", 0x264A39,
+     "em16 type 216 decision chain, trial 5 (0.003): failure goes to the next roll; "
+     "success requests state A01. Paced together with the other seven trials."),
+    ("actor", "notyetb", 0x264A3E, "comiss xmm6, xmm0", 0x264A64,
+     "em16 type 216 decision chain, trial 6 (0.003): failure goes to the next roll; "
+     "success requests state B01. Paced together with the other seven trials."),
+    ("actor", "notyetb", 0x264A71, "comiss xmm6, xmm0", 0x264A88,
+     "em16 type 216 decision chain, trial 7 (0.001): failure goes to the last roll; "
+     "success sets a jump vector and requests state 301. Paced together with the other "
+     "seven trials."),
+    ("actor", "notyetb", 0x264A8D, "comiss xmm6, xmm0", 0x264B4C,
+     "em16 type 216 decision chain, trial 8 (0.001): failure leaves the decision path "
+     "without changing state; success sets the alternate jump vector and requests "
+     "state 301. Every trial fails between stock ticks."),
+    ("objects", "callscale", 0x1D743E, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "an00 slot-26 action 1D72B0, substate 2/1: moves forward by the constant -2 every "
+     "tick during the hop. No time scale feeds the argument, and the caller is not "
+     "gated: scale only this displacement by s."),
+    ("objects", "callscale", 0x1D74C8, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "an00 slot-26 action, substate 2/3: moves by a freshly drawn negative random "
+     "displacement (rand x 0.3 x 15) every tick while its motion plays. Scale the "
+     "applied step, keep the stored animation rate and random draw unchanged."),
+    ("objects", "callscale", 0x1D75AD, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "an00 slot-26 action, substate 2/5: when +E3E <= 0 moves by stock-unit +E48 "
+     "before its separate decay and reload. Scale the call argument; keep the stored "
+     "velocity and its thresholds in stock units."),
+    ("objects", "callscale", 0x1D77B7, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "an00 slot-26 action, substate 1/1: the other +E3E <= 0 movement by stock-unit "
+     "+E48, before its decay and reload. Scale the call argument, as 1D75AD."),
+    ("objects", "callscale", 0x57CBA1, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "ut2c state 6 in 57CA00: moves forward by the constant 15 every tick while its "
+     "+E3C countdown (already paced by action_timers.h) runs. The call receives no "
+     "time scale: s of 15 restores the distance over the stock-length window."),
+    # Second follow-up pass: all remaining 2DA410 callers traced individually.
+    ("objects", "callscale", 0x1DA8C1, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DA750: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DA96F, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DA750: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1DAA5C, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DA750: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DAC44, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DA750: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DB0B6, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DAEB0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DB137, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DAEB0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DC38C, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DC280: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1DEB86, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DE9F0: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DEC13, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DE9F0: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1DECD5, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DE9F0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1DEEAA, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1DE9F0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E21CE, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E2040: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E227C, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E2040: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1E2369, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E2040: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E2555, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E2040: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E504C, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E4D70: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E8751, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E85D0: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E87DB, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E85D0: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1E889D, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E85D0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1E8A67, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1E85D0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EB970, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EB7F0: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EB9F9, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EB7F0: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1EBADE, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EB7F0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EBCEC, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EB7F0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EE7BB, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EE670: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EE93E, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EE670: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EEA43, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EE670: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EEB23, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EE670: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1EECFC, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1EE670: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F2148, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F1FD0: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F21CC, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F1FD0: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1F23B2, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F1FD0: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F606F, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F5F20: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F60F9, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F5F20: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1F61E6, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F5F20: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F63DA, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F5F20: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F8A31, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F8890: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1F8BA9, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1F8890: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1FC1E9, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FC080: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1FC297, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FC080: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1FC387, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FC080: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1FC57D, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FC080: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1FFBC9, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FFA50: moves by a literal hop distance on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1FFC56, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FFA50: moves by the locally formed random displacement on each "
+     "active tick; initialization and reloads contain no timestep conversion. The "
+     "action continues each tick while motion plays or the +E3E wait is expired. Scale "
+     "the applied distance only; preserve stored speeds, thresholds, random draws and "
+     "the existing decay conversion."),
+    ("objects", "callscale", 0x1FFD20, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FFA50: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("objects", "callscale", 0x1FFF16, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "Animal action 1FFA50: moves by stock-unit +E48 on each active tick; "
+     "initialization and reloads contain no timestep conversion. The action continues "
+     "each tick while motion plays or the +E3E wait is expired. Scale the applied "
+     "distance only; preserve stored speeds, thresholds, random draws and the existing "
+     "decay conversion."),
+    ("actor", "callscale", 0x25A4CE, "jmp 0x1802da410", (0x2DA410, "xmm1"),
+     "em0f action 25A310: +E18 is initialized once as (unsigned random + 1) x 1.5; the "
+     "action tail moves by that stock-unit speed every tick. Its 25A2D0 dispatcher is "
+     "ungated. Scale the distance at the tail jump."),
+    ("actor", "callscale", 0x28D7AA, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "em4d/em4e slot-41 action 28D320: +E18 starts at 7 (28D6E7); decay 28D79A is "
+     "already 0.95^s. Every active tick writes the decayed stock-unit speed then "
+     "passes it unchanged to the mover. Scale only the applied distance."),
+    ("actor", "callscale", 0x291277, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "em50 slot-41 action 290EC0: +E18 starts at 10 (2911A4); decay 291267 is already "
+     "0.95^s. Every active tick writes the decayed stock-unit speed then passes it "
+     "unchanged to the mover. Scale only the applied distance."),
+    ("player", "callscale", 0x37FEDE, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp00 action 37FD10 sub-state 1: +E28 starts as signed +1101 x 5.5 and is used as "
+     "a distance every tick during an already-paced +E3C wait. No dt feeds this call. "
+     "Scale the distance only."),
+    ("player", "callscale", 0x384F12, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp04 action 384E30 sub-state 1: +E28 is initialized from target distance / 30 "
+     "and then passed as a distance every tick during flight. No dt feeds this call. "
+     "Scale the distance only."),
+    ("player", "callscale", 0x38724E, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp09 action 387140 settling sub-state 3: +E28 is initialized from target "
+     "distance or an 8-unit cap; decay 38723E is already 0.8^s. This branch passes the "
+     "decayed speed without the scaled xmm6 dt used by the flight branch. Scale only "
+     "this settling call."),
+    ("player", "callscale", 0x3885FB, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp0c action 3884B0 settling sub-state 3: +E28 starts at 9 and decay 3885EB is "
+     "already 0.8^s. The decayed speed is stored and passed every tick during the "
+     "paced +E3C wait. Scale the distance while keeping stored speed and thresholds in "
+     "stock units."),
+    ("player", "callscale", 0x3886A0, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp0c action 3884B0 flight sub-state 1: +E28 starts at 9 (388647) and goes "
+     "unchanged to the mover every tick. No dt feeds this call. Scale the applied "
+     "distance."),
+    ("player", "callscale", 0x3888C9, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp0c action 388780 settling sub-state 3: retains the stock-unit +E28 from its "
+     "earlier flight; decay 3888B9 is already 0.8^s. This call still passes the whole "
+     "speed each tick. Scale only its distance."),
+    ("player", "callscale", 0x38894F, "jmp 0x1802da410", (0x2DA410, "xmm1"),
+     "wp0c action 388780 flight sub-state 1: passes +E28 x 0.5 every tick. The "
+     "multiplier is a motion-speed ratio rather than dt; +E28 retains stock units. "
+     "Scale the distance at the tail jump."),
+    ("player", "callscale", 0x38A810, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp0f action 38A610 sub-state 1: +E28 starts as signed +1101 x 5.5 and is passed "
+     "unchanged every tick while a paced +E3C wait runs. No dt feeds this call. Scale "
+     "only the distance."),
+    ("player", "callscale", 0x38B7C0, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp10 action 38B710 settling sub-state 3: +E28 starts at 21; decay 38B7B0 is "
+     "already 0.975^s. The stored stock-unit speed still goes unchanged to this "
+     "per-tick call. Scale only its distance."),
+    ("player", "callscale", 0x38B976, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp10 action 38B710 flight sub-state 1: +E28 starts at 21 (38B826) and is passed "
+     "unchanged every tick during the already-paced 90-count +E3C wait. Scale the "
+     "distance, preserving the stored speed."),
+    ("player", "callscale", 0x38CC28, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp12 action 38CB60 settling sub-state 3: +E28 starts as unsigned random + 2.5; "
+     "decay 38CC18 is already 0.8^s. The stored stock-unit speed is passed each tick "
+     "during the paced +E3C wait. Scale only its distance."),
+    ("player", "callscale", 0x38CE98, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp12 action 38CB60 flight sub-state 1: +E28 starts as unsigned random + 2.5 and "
+     "is passed unchanged every tick. No dt feeds this call. Scale the distance while "
+     "retaining the random pick and stored speed."),
+    ("player", "callscale", 0x39B8B5, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp47 action 39B7B0 sub-state 1: +E18 starts at 7 and is passed unchanged every "
+     "tick while already-paced +E3C and +E40 waits run. Scale the distance; keep the "
+     "stored speed in stock units."),
+    ("player", "callscale", 0x39D6F8, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp48 action 39D600 sub-state 1 for type 649: moves by a freshly drawn signed "
+     "random x 2 + 4 every tick during a paced +E3C wait. No dt feeds the argument. "
+     "Scale the applied displacement only."),
+    ("player", "callscale", 0x39D773, "call 0x1802da410", (0x2DA410, "xmm1"),
+     "wp48 action 39D600 sub-state 1 for the other type: moves by the literal 5.5 every "
+     "tick during a paced +E3C wait. No dt feeds the argument. Scale the applied "
+     "displacement only."),
+    # Third follow-up pass, 2026-10-07: repeated enemy decision trials.
+    ("actor", "notyetb", 0x264B04, "comiss xmm1, xmm0", 0x264B09,
+     "em16 update 264280, near decision path: trial 1 (0.012) may request state 501. "
+     "Fail between stock ticks; the next trial is paced as well."),
+    ("actor", "notyetb", 0x264B16, "comiss xmm1, xmm0", 0x264B4C,
+     "em16 near decision path: trial 2 (0.05) may request state 501. Failure joins the "
+     "continuous countdown at 264B4C."),
+    ("actor", "notyetb", 0x264D3D, "comiss xmm1, xmm0", 0x264D46,
+     "em16 far type-216 decision path: trial 1 (0.012) may request state 1401. Pace "
+     "all four trials in this chain."),
+    ("actor", "notyetb", 0x264D53, "comiss xmm1, xmm0", 0x264D79,
+     "em16 far type-216 decision path: trial 2 (0.003) may request state D01."),
+    ("actor", "notyetb", 0x264D86, "comiss xmm6, xmm0", 0x264D9D,
+     "em16 far type-216 decision path: trial 3 (0.008) may request state 301 with jump "
+     "vector (0,3,6.5,1)."),
+    ("actor", "notyetb", 0x264DA2, "comiss xmm6, xmm0", 0x264F95,
+     "em16 far type-216 decision path: trial 4 (0.008) may request state 301 with jump "
+     "vector (0,4,5,1). Failure joins the continuous countdown at 264F95."),
+    ("actor", "notyetb", 0x264F29, "comiss xmm1, xmm0", 0x264F95,
+     "em16 other-type decision path: a low-health target permits a 0.5 per-tick trial "
+     "requesting state 1701. This is distinct from the elapsed +1CEC wait that can "
+     "also enter 1701."),
+    ("actor", "notyetb", 0x264F40, "comiss xmm1, xmm0", 0x264F45,
+     "em16 other-type decision path: trial 1 (0.01) may request state 1401. The second "
+     "trial is paced together with it."),
+    ("actor", "notyetb", 0x264F52, "comiss xmm1, xmm0", 0x264F95,
+     "em16 other-type decision path: trial 2 (0.05) may request state 1401 if rsi is "
+     "nonzero. Preserve eligibility checks and the continuous countdown after failure."),
+    ("actor", "notyetb", 0x5C66DC, "comiss xmm1, xmm0", 0x5C673E,
+     "em85 update 5C6450: repeated trial 1 (0.007), distance and idle-state checks "
+     "then state A01. All nine trials fail between stock ticks."),
+    ("actor", "notyetb", 0x5C674B, "comiss xmm1, xmm0", 0x5C67AD,
+     "em85 decision chain: trial 2 (0.012), distance and idle-state checks then state "
+     "B01."),
+    ("actor", "notyetb", 0x5C67BA, "comiss xmm1, xmm0", 0x5C67CD,
+     "em85 decision chain: trial 3 (0.04), distance check then vector attack helper "
+     "5CD430."),
+    ("actor", "notyetb", 0x5C67D2, "comiss xmm7, xmm0", 0x5C67E6,
+     "em85 decision chain: trial 4 (0.1) selects helper 5CD690 once. Its +3490 "
+     "increment counts attempts, not time, and must remain stock."),
+    ("actor", "notyetb", 0x5C67EB, "comiss xmm7, xmm0", 0x5C67FF,
+     "em85 decision chain: trial 5 (0.1) selects helper 5CD760 once. Its +3490 "
+     "increment also counts attempts and remains stock."),
+    ("actor", "notyetb", 0x5C680C, "comiss xmm1, xmm0", 0x5C6866,
+     "em85 decision chain: trial 6 (0.008), idle-state checks then state C01."),
+    ("actor", "notyetb", 0x5C686B, "comiss xmm7, xmm0", 0x5C687C,
+     "em85 decision chain: trial 7 (0.1) selects helper 5CD1F0 once."),
+    ("actor", "notyetb", 0x5C6881, "comiss xmm7, xmm0", 0x5C68BF,
+     "em85 decision chain: trial 8 (0.1) selects vector attack helper 5CD430 once."),
+    ("actor", "notyetb", 0x5C68CC, "comiss xmm1, xmm0", 0x5C68E0,
+     "em85 decision chain: trial 9 (0.5), distance check then helper 5CD610. Failure "
+     "joins the remaining update at 5C68E0."),
+    ("actor", "notyetb", 0x5EC3E3, "comiss xmm1, xmm0", 0x5EC3F7,
+     "em89 update 5EC0F0, phase-0 decision chain: trial 1 (0.009) selects helper "
+     "5F4F50. All seven trials fail between stock ticks."),
+    ("actor", "notyetb", 0x5EC404, "comiss xmm1, xmm0", 0x5EC477,
+     "em89 phase-0 chain: trial 2 (0.003), idle-state checks then state 901."),
+    ("actor", "notyetb", 0x5EC484, "comiss xmm1, xmm0", 0x5EC498,
+     "em89 phase-0 chain: trial 3 (0.004) selects helper 5F4ED0."),
+    ("actor", "notyetb", 0x5EC49D, "comiss xmm6, xmm0", 0x5EC510,
+     "em89 phase-0 chain: trial 4 (0.005), idle-state checks then state 1001."),
+    ("actor", "notyetb", 0x5EC515, "comiss xmm6, xmm0", 0x5EC588,
+     "em89 phase-0 chain: trial 5 (0.005), idle-state checks then state F01."),
+    ("actor", "notyetb", 0x5EC595, "comiss xmm1, xmm0", 0x5EC5FD,
+     "em89 phase-0 chain: trial 6 (0.0055), idle-state checks then state 1101."),
+    ("actor", "notyetb", 0x5EC602, "comiss xmm6, xmm0", 0x5EC65F,
+     "em89 phase-0 chain: trial 7 (0.005), idle-state checks then state 1201. Failure "
+     "joins phase bookkeeping at 5EC65F."),
+    ("actor", "notyetb", 0x5EC6B4, "comiss xmm6, xmm0", 0x5EC72B,
+     "em89 phase-1 decision chain: trial 1 (0.005), idle-state checks then state C01. "
+     "All three trials fail between stock ticks."),
+    ("actor", "notyetb", 0x5EC730, "comiss xmm6, xmm0", 0x5EC78F,
+     "em89 phase-1 chain: trial 2 (0.005), idle-state checks then state D01."),
+    ("actor", "notyetb", 0x5EC794, "comiss xmm6, xmm0", 0x5EC7A3,
+     "em89 phase-1 chain: trial 3 (0.005) selects helper 5F4C90. Failure joins the "
+     "remaining update at 5EC7A3."),
+    # Per-tick enemy decision chains (2026-10-07, second session): em65, em88, em60.
+    # em65 update 2C0A60 (vtable 682FA8 slot 8): after its paced +1714 pause the idle decision chain runs every tick; 84 trials, each failing between stock ticks.
+    ("actor", "notyetb", 0x2C0CDD, "comiss xmm6, xmm0", 0x2C0D22,
+     "em65 trial: chance 0.01 a tick, success store word ptr [rdi + 0x122a], r12w; "
+     "held ticks take the failure 2C0D22."),
+    ("actor", "notyetb", 0x2C0D38, "comiss xmm6, xmm0", 0x2C0D4C,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C0D4C."),
+    ("actor", "notyetb", 0x2C0D51, "comiss xmm6, xmm0", 0x2C0DC3,
+     "em65 trial: chance 0.01 a tick, success requests state 1501; held ticks take the "
+     "failure 2C0DC3."),
+    ("actor", "notyetb", 0x2C0DD0, "comiss xmm7, xmm0", 0x2C0DE4,
+     "em65 trial: chance 0.005 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C0DE4."),
+    ("actor", "notyetb", 0x2C0DE9, "comiss xmm7, xmm0", 0x2C0DFD,
+     "em65 trial: chance 0.005 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C0DFD."),
+    ("actor", "notyetb", 0x2C0E02, "comiss xmm6, xmm0", 0x2C0E74,
+     "em65 trial: chance 0.01 a tick, success requests state 1001; held ticks take the "
+     "failure 2C0E74."),
+    ("actor", "notyetb", 0x2C0E81, "comiss xmm1, xmm0", 0x2C0E95,
+     "em65 trial: chance 0.018 a tick, success calls action setter 2C9D90; held ticks "
+     "take the failure 2C0E95."),
+    ("actor", "notyetb", 0x2C0E9A, "comiss xmm8, xmm0", 0x2C0EF1,
+     "em65 trial: chance 0.015 a tick, success requests state C01; held ticks take the "
+     "failure 2C0EF1."),
+    ("actor", "notyetb", 0x2C0EF6, "comiss xmm8, xmm0", 0x2C0F4D,
+     "em65 trial: chance 0.015 a tick, success requests state B01; held ticks take the "
+     "failure 2C0F4D."),
+    ("actor", "notyetb", 0x2C0F52, "comiss xmm8, xmm0", 0x2C0F67,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C9E70; held ticks "
+     "take the failure 2C0F67."),
+    ("actor", "notyetb", 0x2C0F6C, "comiss xmm8, xmm0", 0x2C0FA4,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C0FA4."),
+    ("actor", "notyetb", 0x2C0FA9, "comiss xmm7, xmm0", 0x2C0FBD,
+     "em65 trial: chance 0.005 a tick, success calls action setter 2C99B0; held ticks "
+     "take the failure 2C0FBD."),
+    ("actor", "notyetb", 0x2C0FCA, "comiss xmm7, xmm0", 0x2C0FD3,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9A70; held ticks "
+     "take the failure 2C0FD3."),
+    ("actor", "notyetb", 0x2C0FE8, "comiss xmm8, xmm0", 0x2C0FFD,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C0FFD."),
+    ("actor", "notyetb", 0x2C1012, "comiss xmm6, xmm0", 0x2C1026,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C1026."),
+    ("actor", "notyetb", 0x2C103B, "comiss xmm6, xmm0", 0x2C104F,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C104F."),
+    ("actor", "notyetb", 0x2C1064, "comiss xmm7, xmm0", 0x2C1078,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C1078."),
+    ("actor", "notyetb", 0x2C10AC, "comiss xmm7, xmm0", 0x2C10C0,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C10C0."),
+    ("actor", "notyetb", 0x2C10F4, "comiss xmm7, xmm0", 0x2C10FD,
+     "em65 trial: chance 0.02 a tick, success requests state 1001; held ticks take the "
+     "failure 2C10FD."),
+    ("actor", "notyetb", 0x2C1116, "comiss xmm1, xmm0", 0x2C112A,
+     "em65 trial: chance 0.15 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C112A."),
+    ("actor", "notyetb", 0x2C1148, "comiss xmm9, xmm0", 0x2C1152,
+     "em65 trial: chance 0.025 a tick, success requests state 1001; held ticks take "
+     "the failure 2C1152."),
+    ("actor", "notyetb", 0x2C1167, "comiss xmm8, xmm0", 0x2C1171,
+     "em65 trial: chance 0.015 a tick, success requests state C01; held ticks take the "
+     "failure 2C1171."),
+    ("actor", "notyetb", 0x2C1186, "comiss xmm8, xmm0", 0x2C1190,
+     "em65 trial: chance 0.015 a tick, success requests state B01; held ticks take the "
+     "failure 2C1190."),
+    ("actor", "notyetb", 0x2C11A5, "comiss xmm6, xmm0", 0x2C11FB,
+     "em65 trial: chance 0.01 a tick, success requests state 901; held ticks take the "
+     "failure 2C11FB."),
+    ("actor", "notyetb", 0x2C120C, "comiss xmm7, xmm0", 0x2C1220,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C1220."),
+    ("actor", "notyetb", 0x2C123D, "comiss xmm1, xmm0", 0x2C1251,
+     "em65 trial: chance 0.045 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C1251."),
+    ("actor", "notyetb", 0x2C1266, "comiss xmm9, xmm0", 0x2C127B,
+     "em65 trial: chance 0.025 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C127B."),
+    ("actor", "notyetb", 0x2C1290, "comiss xmm8, xmm0", 0x2C12A5,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C12A5."),
+    ("actor", "notyetb", 0x2C12BA, "comiss xmm6, xmm0", 0x2C12C3,
+     "em65 trial: chance 0.01 a tick, success requests state 901; held ticks take the "
+     "failure 2C12C3."),
+    ("actor", "notyetb", 0x2C12E0, "comiss xmm1, xmm0", 0x2C12F4,
+     "em65 trial: chance 0.105 a tick, success calls action setter 2C9E70; held ticks "
+     "take the failure 2C12F4."),
+    ("actor", "notyetb", 0x2C1309, "comiss xmm6, xmm0", 0x2C1312,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9A70; held ticks "
+     "take the failure 2C1312."),
+    ("actor", "notyetb", 0x2C1327, "comiss xmm6, xmm0", 0x2C197B,
+     "em65 trial: chance 0.01 a tick, success requests state 901; held ticks take the "
+     "failure 2C197B."),
+    ("actor", "notyetb", 0x2C133D, "comiss xmm7, xmm0", 0x2C1346,
+     "em65 trial: chance 0.02 a tick, success requests state 1501; held ticks take the "
+     "failure 2C1346."),
+    ("actor", "notyetb", 0x2C1353, "comiss xmm1, xmm0", 0x2C135C,
+     "em65 trial: chance 0.03 a tick, success requests state 1001; held ticks take the "
+     "failure 2C135C."),
+    ("actor", "notyetb", 0x2C1361, "comiss xmm8, xmm0", 0x2C1376,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C9D90; held ticks "
+     "take the failure 2C1376."),
+    ("actor", "notyetb", 0x2C137B, "comiss xmm6, xmm0", 0x2C138F,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C138F."),
+    ("actor", "notyetb", 0x2C1394, "comiss xmm6, xmm0", 0x2C13A8,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C13A8."),
+    ("actor", "notyetb", 0x2C13AD, "comiss xmm6, xmm0", 0x2C13C1,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C13C1."),
+    ("actor", "notyetb", 0x2C13C6, "comiss xmm6, xmm0", 0x2C13CF,
+     "em65 trial: chance 0.01 a tick, success requests state C01; held ticks take the "
+     "failure 2C13CF."),
+    ("actor", "notyetb", 0x2C13D4, "comiss xmm6, xmm0", 0x2C13DD,
+     "em65 trial: chance 0.01 a tick, success requests state B01; held ticks take the "
+     "failure 2C13DD."),
+    ("actor", "notyetb", 0x2C13E2, "comiss xmm7, xmm0", 0x2C13F6,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C99B0; held ticks "
+     "take the failure 2C13F6."),
+    ("actor", "notyetb", 0x2C13FB, "comiss xmm6, xmm0", 0x2C191D,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C191D."),
+    ("actor", "notyetb", 0x2C1424, "comiss xmm6, xmm0", 0x2C1438,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C1438."),
+    ("actor", "notyetb", 0x2C143D, "comiss xmm8, xmm0", 0x2C1452,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C9D90; held ticks "
+     "take the failure 2C1452."),
+    ("actor", "notyetb", 0x2C145F, "comiss xmm7, xmm0", 0x2C1473,
+     "em65 trial: chance 0.009 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C1473."),
+    ("actor", "notyetb", 0x2C1478, "comiss xmm7, xmm0", 0x2C148C,
+     "em65 trial: chance 0.009 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C148C."),
+    ("actor", "notyetb", 0x2C1499, "comiss xmm7, xmm0", 0x2C14A2,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9A70; held ticks "
+     "take the failure 2C14A2."),
+    ("actor", "notyetb", 0x2C14A7, "comiss xmm8, xmm0", 0x2C14B1,
+     "em65 trial: chance 0.015 a tick, success requests state C01; held ticks take the "
+     "failure 2C14B1."),
+    ("actor", "notyetb", 0x2C14B6, "comiss xmm8, xmm0", 0x2C14C0,
+     "em65 trial: chance 0.015 a tick, success requests state B01; held ticks take the "
+     "failure 2C14C0."),
+    ("actor", "notyetb", 0x2C14C5, "comiss xmm7, xmm0", 0x2C14D9,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C99B0; held ticks "
+     "take the failure 2C14D9."),
+    ("actor", "notyetb", 0x2C14DE, "comiss xmm6, xmm0", 0x2C14F2,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C14F2."),
+    ("actor", "notyetb", 0x2C14F7, "comiss xmm7, xmm0", 0x2C150B,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9E70; held ticks "
+     "take the failure 2C150B."),
+    ("actor", "notyetb", 0x2C1519, "comiss xmm9, xmm0", 0x2C1539,
+     "em65 trial: chance 0.04 a tick, success store dword ptr [rdi + 0x1714], ecx; "
+     "held ticks take the failure 2C1539."),
+    ("actor", "notyetb", 0x2C154A, "comiss xmm7, xmm0", 0x2C155E,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C155E."),
+    ("actor", "notyetb", 0x2C156F, "comiss xmm6, xmm0", 0x2C1578,
+     "em65 trial: chance 0.01 a tick, success store word ptr [rdi + 0x122a], r12w; "
+     "held ticks take the failure 2C1578."),
+    ("actor", "notyetb", 0x2C1589, "comiss xmm8, xmm0", 0x2C1593,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C9A70; held ticks "
+     "take the failure 2C1593."),
+    ("actor", "notyetb", 0x2C15A8, "comiss xmm9, xmm0", 0x2C15BD,
+     "em65 trial: chance 0.04 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C15BD."),
+    ("actor", "notyetb", 0x2C15D2, "comiss xmm9, xmm0", 0x2C15E7,
+     "em65 trial: chance 0.04 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C15E7."),
+    ("actor", "notyetb", 0x2C1605, "comiss xmm6, xmm0", 0x2C1619,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C1619."),
+    ("actor", "notyetb", 0x2C1626, "comiss xmm1, xmm0", 0x2C162F,
+     "em65 trial: chance 0.03 a tick, success requests state 1001; held ticks take the "
+     "failure 2C162F."),
+    ("actor", "notyetb", 0x2C1634, "comiss xmm6, xmm0", 0x2C1648,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C1648."),
+    ("actor", "notyetb", 0x2C164D, "comiss xmm6, xmm0", 0x2C1661,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C1661."),
+    ("actor", "notyetb", 0x2C1666, "comiss xmm6, xmm0", 0x2C166F,
+     "em65 trial: chance 0.01 a tick, success requests state C01; held ticks take the "
+     "failure 2C166F."),
+    ("actor", "notyetb", 0x2C1674, "comiss xmm6, xmm0", 0x2C167D,
+     "em65 trial: chance 0.01 a tick, success requests state B01; held ticks take the "
+     "failure 2C167D."),
+    ("actor", "notyetb", 0x2C168A, "comiss xmm1, xmm0", 0x2C191D,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C99B0; held ticks "
+     "take the failure 2C191D."),
+    ("actor", "notyetb", 0x2C16B2, "comiss xmm1, xmm0", 0x2C16C6,
+     "em65 trial: chance 0.035 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C16C6."),
+    ("actor", "notyetb", 0x2C16D4, "comiss xmm9, xmm0", 0x2C16DE,
+     "em65 trial: chance 0.02 a tick, success store word ptr [rdi + 0x122a], r12w; "
+     "held ticks take the failure 2C16DE."),
+    ("actor", "notyetb", 0x2C16E3, "comiss xmm8, xmm0", 0x2C16F8,
+     "em65 trial: chance 0.015 a tick, success calls action setter 2C99B0; held ticks "
+     "take the failure 2C16F8."),
+    ("actor", "notyetb", 0x2C1705, "comiss xmm1, xmm0", 0x2C1719,
+     "em65 trial: chance 0.03 a tick, success calls action setter 2C9E70; held ticks "
+     "take the failure 2C1719."),
+    ("actor", "notyetb", 0x2C1726, "comiss xmm7, xmm0", 0x2C173A,
+     "em65 trial: chance 0.007 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C173A."),
+    ("actor", "notyetb", 0x2C173F, "comiss xmm7, xmm0", 0x2C1753,
+     "em65 trial: chance 0.007 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C1753."),
+    ("actor", "notyetb", 0x2C176C, "comiss xmm7, xmm0", 0x2C1780,
+     "em65 trial: chance 0.05 a tick, success calls action setter 2C9B20; held ticks "
+     "take the failure 2C1780."),
+    ("actor", "notyetb", 0x2C1791, "comiss xmm7, xmm0", 0x2C179A,
+     "em65 trial: chance 0.05 a tick, success store word ptr [rdi + 0x122a], r12w; "
+     "held ticks take the failure 2C179A."),
+    ("actor", "notyetb", 0x2C17AB, "comiss xmm6, xmm0", 0x2C17BF,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2C9A70; held ticks "
+     "take the failure 2C17BF."),
+    ("actor", "notyetb", 0x2C17D0, "comiss xmm7, xmm0", 0x2C17E4,
+     "em65 trial: chance 0.05 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C17E4."),
+    ("actor", "notyetb", 0x2C17F5, "comiss xmm7, xmm0", 0x2C1809,
+     "em65 trial: chance 0.05 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C1809."),
+    ("actor", "notyetb", 0x2C181A, "comiss xmm9, xmm0", 0x2C1824,
+     "em65 trial: chance 0.02 a tick, success requests state 901; held ticks take the "
+     "failure 2C1824."),
+    ("actor", "notyetb", 0x2C15FC, "comiss xmm8, xmm0", 0x2C197B,
+     "em65 trial: chance 0.015 a tick (flags reach 2C183C through a jmp), success "
+     "calls action setter 2C9A70; held ticks take the failure 2C197B."),
+    ("actor", "callgate", 0x2C1847, "call 0x1802c9a70", (0x2C9A70,"void"),
+     "em65 trial 2C1839 (chance 0.01 a tick, the type-267 chain's last) shares its jbe "
+     "2C183C with 2C15FC's jmp, so no window fits the compare: between stock ticks its "
+     "success path skips the action setter 2C9A70 instead (rax unread; the join 2C197B "
+     "follows). Every other path into 2C1842 is a gated trial."),
+    ("actor", "notyetb", 0x2C1851, "comiss xmm6, xmm0", 0x2C1865,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA190; held ticks "
+     "take the failure 2C1865."),
+    ("actor", "notyetb", 0x2C186A, "comiss xmm6, xmm0", 0x2C187E,
+     "em65 trial: chance 0.01 a tick, success calls action setter 2CA100; held ticks "
+     "take the failure 2C187E."),
+    ("actor", "notyetb", 0x2C188B, "comiss xmm1, xmm0", 0x2C189F,
+     "em65 trial: chance 0.02 a tick, success calls action setter 2C9FD0; held ticks "
+     "take the failure 2C189F."),
+    ("actor", "notyetb", 0x2C18AC, "comiss xmm1, xmm0", 0x2C191D,
+     "em65 trial: chance 0.05 a tick, success store word ptr [rdi + 0x122a], r12w; "
+     "held ticks take the failure 2C191D."),
+    ("actor", "notyetb", 0x2C192A, "comiss xmm1, xmm0", 0x2C197B,
+     "em65 trial: chance 0.003 a tick, success requests state 1201; held ticks take "
+     "the failure 2C197B."),
+    # em88 update 5DF660 (vtable 6BC950 slot 8): once its paced +3878 cooldown is spent the decision chain runs every tick; 33 trials, each failing between stock ticks.
+    ("actor", "notyetb", 0x5DFCB2, "comiss xmm1, xmm0", 0x5E0697,
+     "em88 trial: chance 0.2 a tick, success requests state 1001; held ticks take the "
+     "failure 5E0697."),
+    ("actor", "notyetb", 0x5DFD99, "comiss xmm6, xmm0", 0x5DFDA2,
+     "em88 trial: chance 0.005 a tick, success requests state 501; held ticks take the "
+     "failure 5DFDA2."),
+    ("actor", "notyetb", 0x5DFDA7, "comiss xmm6, xmm0", 0x5DFDF8,
+     "em88 trial: chance 0.005 a tick, success requests state 601; held ticks take the "
+     "failure 5DFDF8."),
+    ("actor", "notyetb", 0x5DFE05, "comiss xmm1, xmm0", 0x5DFE0E,
+     "em88 trial: chance 0.001 a tick, success store dword ptr [rbx + 0x3860], "
+     "0x438c0000; held ticks take the failure 5DFE0E."),
+    ("actor", "notyetb", 0x5DFE1B, "comiss xmm6, xmm0", 0x5DFE6C,
+     "em88 trial: chance 0.015 a tick, success requests state 1401; held ticks take "
+     "the failure 5DFE6C."),
+    ("actor", "notyetb", 0x5DFE79, "comiss xmm1, xmm0", 0x5DFECA,
+     "em88 trial: chance 0.025 a tick, success requests state 1201; held ticks take "
+     "the failure 5DFECA."),
+    ("actor", "notyetb", 0x5DFECF, "comiss xmm6, xmm0", 0x5DFF37,
+     "em88 trial: chance 0.015 a tick, success requests state D01; held ticks take the "
+     "failure 5DFF37."),
+    ("actor", "notyetb", 0x5DFF44, "comiss xmm1, xmm0", 0x5DFFA7,
+     "em88 trial: chance 0.02 a tick, success requests state E01; held ticks take the "
+     "failure 5DFFA7."),
+    ("actor", "notyetb", 0x5DFFAC, "comiss xmm9, xmm0", 0x5E0010,
+     "em88 trial: chance 0.01 a tick, success requests state F01; held ticks take the "
+     "failure 5E0010."),
+    ("actor", "notyetb", 0x5E0015, "comiss xmm9, xmm0", 0x5E001F,
+     "em88 trial: chance 0.01 a tick, success requests state 1001; held ticks take the "
+     "failure 5E001F."),
+    ("actor", "notyetb", 0x5E0024, "comiss xmm9, xmm0", 0x5E0088,
+     "em88 trial: chance 0.01 a tick, success requests state 1101; held ticks take the "
+     "failure 5E0088."),
+    ("actor", "notyetb", 0x5E0095, "comiss xmm1, xmm0", 0x5E0697,
+     "em88 trial: chance 0.008 a tick, success requests state B01; held ticks take the "
+     "failure 5E0697."),
+    ("actor", "notyetb", 0x5E00F7, "comiss xmm6, xmm0", 0x5E0167,
+     "em88 trial: chance 0.04 a tick, success requests state 501; held ticks take the "
+     "failure 5E0167."),
+    ("actor", "notyetb", 0x5E016C, "comiss xmm9, xmm0", 0x5E01DA,
+     "em88 trial: chance 0.01 a tick, success store dword ptr [rbx + 0x3860], "
+     "0x438c0000; held ticks take the failure 5E01DA."),
+    ("actor", "notyetb", 0x5E01E7, "comiss xmm1, xmm0", 0x5E0238,
+     "em88 trial: chance 0.03 a tick, success requests state 1701; held ticks take the "
+     "failure 5E0238."),
+    ("actor", "notyetb", 0x5E023D, "comiss xmm6, xmm0", 0x5E0697,
+     "em88 trial: chance 0.04 a tick, success requests state 701; held ticks take the "
+     "failure 5E0697."),
+    ("actor", "notyetb", 0x5E02D2, "comiss xmm1, xmm0", 0x5E0314,
+     "em88 trial: chance 0.015 a tick, success requests state 1201; held ticks take "
+     "the failure 5E0314."),
+    ("actor", "notyetb", 0x5E0332, "comiss xmm1, xmm0", 0x5E0382,
+     "em88 trial: chance 0.007 a tick, success requests state 1301; held ticks take "
+     "the failure 5E0382."),
+    ("actor", "notyetb", 0x5E0387, "comiss xmm6, xmm0", 0x5E039B,
+     "em88 trial: chance 0.001 a tick, success calls action setter 5EAB80; held ticks "
+     "take the failure 5E039B."),
+    ("actor", "notyetb", 0x5E03A0, "comiss xmm6, xmm0", 0x5E0403,
+     "em88 trial: chance 0.001 a tick, success requests state 901; held ticks take the "
+     "failure 5E0403."),
+    ("actor", "notyetb", 0x5E0415, "comiss xmm7, xmm0", 0x5E041E,
+     "em88 trial: chance 0.02 a tick, success requests state 501; held ticks take the "
+     "failure 5E041E."),
+    ("actor", "notyetb", 0x5E0423, "comiss xmm7, xmm0", 0x5E042C,
+     "em88 trial: chance 0.02 a tick, success requests state 601; held ticks take the "
+     "failure 5E042C."),
+    ("actor", "notyetb", 0x5E0431, "comiss xmm6, xmm0", 0x5E043A,
+     "em88 trial: chance 0.001 a tick, success store dword ptr [rbx + 0x3860], "
+     "0x438c0000; held ticks take the failure 5E043A."),
+    ("actor", "notyetb", 0x5E0447, "comiss xmm1, xmm0", 0x5E0450,
+     "em88 trial: chance 0.008 a tick, success requests state 1401; held ticks take "
+     "the failure 5E0450."),
+    ("actor", "notyetb", 0x5E045D, "comiss xmm1, xmm0", 0x5E0466,
+     "em88 trial: chance 0.005 a tick, success requests state B01; held ticks take the "
+     "failure 5E0466."),
+    ("actor", "notyetb", 0x5E0473, "comiss xmm6, xmm0", 0x5E047C,
+     "em88 trial: chance 0.003 a tick, success requests state D01; held ticks take the "
+     "failure 5E047C."),
+    ("actor", "notyetb", 0x5E0481, "comiss xmm9, xmm0", 0x5E048B,
+     "em88 trial: chance 0.01 a tick, success requests state 1201; held ticks take the "
+     "failure 5E048B."),
+    ("actor", "notyetb", 0x5E04A5, "comiss xmm1, xmm0", 0x5E04FC,
+     "em88 trial: chance 0.04 a tick, success requests state B01; held ticks take the "
+     "failure 5E04FC."),
+    ("actor", "notyetb", 0x5E0501, "comiss xmm9, xmm0", 0x5E0559,
+     "em88 trial: chance 0.01 a tick, success requests state 1401; held ticks take the "
+     "failure 5E0559."),
+    ("actor", "notyetb", 0x5E055E, "comiss xmm9, xmm0", 0x5E05D2,
+     "em88 trial: chance 0.01 a tick, success store dword ptr [rbx + 0x3860], "
+     "0x438c0000; held ticks take the failure 5E05D2."),
+    ("actor", "notyetb", 0x5E05DF, "comiss xmm1, xmm0", 0x5E062F,
+     "em88 trial: chance 0.005 a tick, success requests state 1201; held ticks take "
+     "the failure 5E062F."),
+    ("actor", "notyetb", 0x5E0490, "comiss xmm6, xmm0", 0x5E0697,
+     "em88 trial: chance 0.003 a tick (flags reach 5E0638 through a jmp), success "
+     "requests state 1301; held ticks take the failure 5E0697."),
+    ("actor", "notyet", 0x5E0641, "cmp al, 1", 0x5E0697,
+     "em88 trial 5E0634 (chance 0.01 a tick) shares its jbe 5E0638 with 5E0490's jmp, "
+     "so no window fits the compare: between stock ticks its success path's first "
+     "eligibility test (+E34 == 1, `cmp al, 1; jne`) reads \"not equal\" and goes to the "
+     "join 5E0697 instead of requesting state 1301. 5E0490 is gated, so only this "
+     "trial reaches 5E063A on those ticks."),
+    # em60 update 2A8D20 (vtable 682650 slot 8): the near and far decision chains run every tick and end in the paced idle countdown +15D8; 68 trials, each failing between stock ticks.
+    ("actor", "notyetb", 0x2A905B, "comiss xmm9, xmm0", 0x2A906B,
+     "em60 trial: chance 0.006 a tick, success store dword ptr [rbx + 0x1660], 0x1e; "
+     "held ticks take the failure 2A906B."),
+    ("actor", "notyetb", 0x2A9079, "comiss xmm9, xmm0", 0x2A9089,
+     "em60 trial: chance 0.006 a tick, success store dword ptr [rbx + 0x1664], 0x1e; "
+     "held ticks take the failure 2A9089."),
+    ("actor", "notyetb", 0x2A9457, "comiss xmm1, xmm0", 0x2A9486,
+     "em60 trial: chance 0.007 a tick, success requests state 1601; held ticks take "
+     "the failure 2A9486."),
+    ("actor", "notyetb", 0x2A9494, "comiss xmm8, xmm0", 0x2A94A6,
+     "em60 trial: chance 0.002 a tick, success calls action setter 2B6030; held ticks "
+     "take the failure 2A94A6."),
+    ("actor", "notyetb", 0x2A94B3, "comiss xmm6, xmm0", 0x2A9669,
+     "em60 trial: chance 0.001 a tick, success requests state A01; held ticks take the "
+     "failure 2A9669."),
+    ("actor", "notyetb", 0x2A9677, "comiss xmm13, xmm0", 0x2A96C7,
+     "em60 trial: chance 0.01 a tick, success requests state B01; held ticks take the "
+     "failure 2A96C7."),
+    ("actor", "notyetb", 0x2A96D5, "comiss xmm10, xmm0", 0x2A9735,
+     "em60 trial: chance 0.005 a tick, success requests state 1901; held ticks take "
+     "the failure 2A9735."),
+    ("actor", "notyetb", 0x2A973A, "comiss xmm9, xmm0", 0x2A979A,
+     "em60 trial: chance 0.006 a tick, success requests state 1E01; held ticks take "
+     "the failure 2A979A."),
+    ("actor", "notyetb", 0x2A97A7, "comiss xmm7, xmm0", 0x2A97E7,
+     "em60 trial: chance 0.009 a tick, success requests state E01; held ticks take the "
+     "failure 2A97E7."),
+    ("actor", "notyetb", 0x2A97EC, "comiss xmm6, xmm0", 0x2A983D,
+     "em60 trial: chance 0.001 a tick, success requests state D01; held ticks take the "
+     "failure 2A983D."),
+    ("actor", "notyetb", 0x2A9842, "comiss xmm7, xmm0", 0x2A987E,
+     "em60 trial: chance 0.009 a tick, success calls action setter 2B57A0; held ticks "
+     "take the failure 2A987E."),
+    ("actor", "notyetb", 0x2A9883, "comiss xmm9, xmm0", 0x2A98C0,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B5890; held ticks "
+     "take the failure 2A98C0."),
+    ("actor", "notyetb", 0x2A98C5, "comiss xmm6, xmm0", 0x2A98D1,
+     "em60 trial: chance 0.001 a tick, success requests state 1301; held ticks take "
+     "the failure 2A98D1."),
+    ("actor", "notyetb", 0x2A98E9, "comiss xmm9, xmm0", 0x2A993A,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A993A."),
+    ("actor", "notyetb", 0x2A9955, "comiss xmm9, xmm0", 0x2A997A,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A997A."),
+    ("actor", "notyetb", 0x2A9995, "comiss xmm6, xmm0", 0x2A99AC,
+     "em60 trial: chance 0.001 a tick, success calls action setter 2B56E0; held ticks "
+     "take the failure 2A99AC."),
+    ("actor", "notyetb", 0x2A99C9, "comiss xmm1, xmm0", 0x2A9A09,
+     "em60 trial: chance 0.018 a tick, success requests state E01; held ticks take the "
+     "failure 2A9A09."),
+    ("actor", "notyetb", 0x2A9A1E, "comiss xmm8, xmm0", 0x2A9A28,
+     "em60 trial: chance 0.002 a tick, success requests state 1301; held ticks take "
+     "the failure 2A9A28."),
+    ("actor", "notyetb", 0x2A9A59, "comiss xmm9, xmm0", 0x2A9A9A,
+     "em60 trial: chance 0.006 a tick, success requests state E01; held ticks take the "
+     "failure 2A9A9A."),
+    ("actor", "notyetb", 0x2A9AB7, "comiss xmm7, xmm0", 0x2A9AC0,
+     "em60 trial: chance 0.015 a tick, success requests state 1301; held ticks take "
+     "the failure 2A9AC0."),
+    ("actor", "notyetb", 0x2A9AD5, "comiss xmm13, xmm0", 0x2A9AED,
+     "em60 trial: chance 0.01 a tick, success calls action setter 2B56E0; held ticks "
+     "take the failure 2A9AED."),
+    ("actor", "notyetb", 0x2A9B02, "comiss xmm7, xmm0", 0x2A9B42,
+     "em60 trial: chance 0.015 a tick, success requests state E01; held ticks take the "
+     "failure 2A9B42."),
+    ("actor", "notyetb", 0x2A9B84, "comiss xmm1, xmm0", 0x2A9B97,
+     "em60 trial: chance 0.012 a tick, success requests state 1301; held ticks take "
+     "the failure 2A9B97."),
+    ("actor", "notyetb", 0x2A9BD9, "comiss xmm6, xmm0", 0x2A9BE2,
+     "em60 trial: chance 0.008 a tick, success requests state 1301; held ticks take "
+     "the failure 2A9BE2."),
+    ("actor", "notyetb", 0x2A9BF7, "comiss xmm10, xmm0", 0x2A9C38,
+     "em60 trial: chance 0.005 a tick, success requests state D01; held ticks take the "
+     "failure 2A9C38."),
+    ("actor", "notyetb", 0x2A9C4D, "comiss xmm10, xmm0", 0x2A9C6A,
+     "em60 trial: chance 0.005 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9C6A."),
+    ("actor", "notyetb", 0x2A9C87, "comiss xmm1, xmm0", 0x2A9CAA,
+     "em60 trial: chance 0.004 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9CAA."),
+    ("actor", "notyetb", 0x2A9CBF, "comiss xmm10, xmm0", 0x2A9CEA,
+     "em60 trial: chance 0.005 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9CEA."),
+    ("actor", "notyetb", 0x2A9D07, "comiss xmm1, xmm0", 0x2A9D47,
+     "em60 trial: chance 0.02 a tick, success requests state E01; held ticks take the "
+     "failure 2A9D47."),
+    ("actor", "notyetb", 0x2A9D5C, "comiss xmm9, xmm0", 0x2A9D74,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B56E0; held ticks "
+     "take the failure 2A9D74."),
+    ("actor", "notyetb", 0x2A9DA9, "comiss xmm9, xmm0", 0x2A9DEA,
+     "em60 trial: chance 0.006 a tick, success requests state E01; held ticks take the "
+     "failure 2A9DEA."),
+    ("actor", "notyetb", 0x2A9E24, "comiss xmm9, xmm0", 0x2A9E38,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9E38."),
+    ("actor", "notyetb", 0x2A9E6C, "comiss xmm9, xmm0", 0x2A9E76,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9E76."),
+    ("actor", "notyetb", 0x2A9E87, "comiss xmm6, xmm0", 0x2A9ED9,
+     "em60 trial: chance 0.008 a tick, success requests state B01; held ticks take the "
+     "failure 2A9ED9."),
+    ("actor", "notyetb", 0x2A9EF3, "comiss xmm9, xmm0", 0x2A9EFD,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B57A0; held ticks "
+     "take the failure 2A9EFD."),
+    ("actor", "notyetb", 0x2A9F23, "comiss xmm6, xmm0", 0x2A9F2C,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9F2C."),
+    ("actor", "notyetb", 0x2A9F4A, "comiss xmm6, xmm0", 0x2A9F53,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9F53."),
+    ("actor", "notyetb", 0x2A9F71, "comiss xmm6, xmm0", 0x2A9F7A,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2A9F7A."),
+    ("actor", "notyetb", 0x2A9F98, "comiss xmm7, xmm0", 0x2A9FD8,
+     "em60 trial: chance 0.015 a tick, success requests state E01; held ticks take the "
+     "failure 2A9FD8."),
+    ("actor", "notyetb", 0x2A9FF6, "comiss xmm13, xmm0", 0x2AA00E,
+     "em60 trial: chance 0.01 a tick, success calls action setter 2B56E0; held ticks "
+     "take the failure 2AA00E."),
+    ("actor", "notyetb", 0x2AA04C, "comiss xmm6, xmm0", 0x2AA08C,
+     "em60 trial: chance 0.003 a tick, success requests state E01; held ticks take the "
+     "failure 2AA08C."),
+    ("actor", "notyetb", 0x2AA0CD, "comiss xmm6, xmm0", 0x2AA0F8,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA0F8."),
+    ("actor", "notyetb", 0x2AA139, "comiss xmm6, xmm0", 0x2AA163,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA163."),
+    ("actor", "notyetb", 0x2AA1A1, "comiss xmm6, xmm0", 0x2AA1B8,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA1B8."),
+    ("actor", "notyetb", 0x2AA1F1, "comiss xmm6, xmm0", 0x2AA208,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA208."),
+    ("actor", "notyetb", 0x2AA338, "comiss xmm7, xmm0", 0x2AA37F,
+     "em60 trial: chance 0.012 a tick, success requests state B01; held ticks take the "
+     "failure 2AA37F."),
+    ("actor", "notyetb", 0x2AA38D, "comiss xmm8, xmm0", 0x2AA3F0,
+     "em60 trial: chance 0.015 a tick, success requests state 1601; held ticks take "
+     "the failure 2AA3F0."),
+    ("actor", "notyetb", 0x2AA3F5, "comiss xmm9, xmm0", 0x2AA3FF,
+     "em60 trial: chance 0.006 a tick, success requests state D01; held ticks take the "
+     "failure 2AA3FF."),
+    ("actor", "notyetb", 0x2AA40C, "comiss xmm1, xmm0", 0x2AA423,
+     "em60 trial: chance 0.014 a tick, success calls action setter 2B56E0; held ticks "
+     "take the failure 2AA423."),
+    ("actor", "notyetb", 0x2AA430, "comiss xmm6, xmm0", 0x2AA473,
+     "em60 trial: chance 0.008 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA473."),
+    ("actor", "notyetb", 0x2AA478, "comiss xmm6, xmm0", 0x2AA48B,
+     "em60 trial: chance 0.008 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA48B."),
+    ("actor", "notyetb", 0x2AA490, "comiss xmm7, xmm0", 0x2AA499,
+     "em60 trial: chance 0.012 a tick, success calls action setter 2B57A0; held ticks "
+     "take the failure 2AA499."),
+    ("actor", "notyetb", 0x2AA49E, "comiss xmm9, xmm0", 0x2AA4A8,
+     "em60 trial: chance 0.006 a tick, success calls action setter 2B5890; held ticks "
+     "take the failure 2AA4A8."),
+    ("actor", "notyetb", 0x2AA4B5, "comiss xmm6, xmm0", 0x2AA4CC,
+     "em60 trial: chance 0.002 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA4CC."),
+    ("actor", "notyetb", 0x2AA4D9, "comiss xmm1, xmm0", 0x2AA4DE,
+     "em60 trial: chance 0.001 a tick, success requests state 1301; held ticks take "
+     "the failure 2AA4DE."),
+    ("actor", "notyetb", 0x2AA4EF, "comiss xmm8, xmm0", 0x2AA507,
+     "em60 trial: chance 0.015 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA507."),
+    ("actor", "notyetb", 0x2AA518, "comiss xmm6, xmm0", 0x2AA51D,
+     "em60 trial: chance 0.002 a tick, success requests state 1301; held ticks take "
+     "the failure 2AA51D."),
+    ("actor", "notyetb", 0x2AA53A, "comiss xmm1, xmm0", 0x2AA5AF,
+     "em60 trial: chance 0.029 a tick, success requests state 1301; held ticks take "
+     "the failure 2AA5AF."),
+    ("actor", "notyetb", 0x2AA5C8, "comiss xmm1, xmm0", 0x2AA5DF,
+     "em60 trial: chance 0.003 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA5DF."),
+    ("actor", "notyetb", 0x2AA5F0, "comiss xmm7, xmm0", 0x2AA607,
+     "em60 trial: chance 0.012 a tick, success calls action setter 2B56E0; held ticks "
+     "take the failure 2AA607."),
+    ("actor", "notyetb", 0x2AA620, "comiss xmm7, xmm0", 0x2AA656,
+     "em60 trial: chance 0.004 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA656."),
+    ("actor", "notyetb", 0x2AA673, "comiss xmm6, xmm0", 0x2AA6A6,
+     "em60 trial: chance 0.005 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA6A6."),
+    ("actor", "notyetb", 0x2AA6B7, "comiss xmm7, xmm0", 0x2AA720,
+     "em60 trial: chance 0.004 a tick, success calls action setter 2B5D80; held ticks "
+     "take the failure 2AA720."),
+    ("actor", "notyetb", 0x2AA739, "comiss xmm1, xmm0", 0x2AA79A,
+     "em60 trial: chance 0.01 a tick, success requests state 1B01; held ticks take the "
+     "failure 2AA79A."),
+    ("actor", "notyetb", 0x2AA7AF, "comiss xmm7, xmm0", 0x2AA815,
+     "em60 trial: chance 0.004 a tick, success requests state B01; held ticks take the "
+     "failure 2AA815."),
+    ("actor", "notyetb", 0x2AA833, "comiss xmm6, xmm0", 0x2AA84A,
+     "em60 trial: chance 0.005 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA84A."),
+    ("actor", "notyetb", 0x2AA888, "comiss xmm6, xmm0", 0x2AA89F,
+     "em60 trial: chance 0.005 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA89F."),
+    ("actor", "notyetb", 0x2AA8DC, "comiss xmm6, xmm0", 0x2AA8F3,
+     "em60 trial: chance 0.005 a tick, success calls action setter 2B5600; held ticks "
+     "take the failure 2AA8F3."),
+    # Animation-frame events (2026-10-07, second session): an exact integer frame with no
+    # crossing guard ((int)frame != (int)last) holds N ticks at N x; one-shot sounds and
+    # effects under it fire once per stock pass. tools/frame_events.py lists them.
+    ("actor", "notyet", 0x2446F3, "cmp eax, 0x19", 0x244711,
+     "em00..em04/em7a 2443F0: (int)+F48 == 25 starts a sound once a stock pass; the "
+     "frame steps 1/N a tick at N x, so the equality holds N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x247E9B, "cmp eax, 0x16", 0x247EB9,
+     "em00..em03/em7a/em81/em83 247CF0: (int)+F48 == 22 starts a sound once a stock "
+     "pass; the frame steps 1/N a tick at N x, so the equality holds N ticks and it "
+     "started N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x247F83, "cmp eax, 0x15", 0x248079,
+     "em00..em03/em7a/em81/em83 247CF0: (int)+F48 == 21 starts an effect once a stock "
+     "pass; the frame steps 1/N a tick at N x, so the equality holds N ticks and it "
+     "started N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2481D0, "cmp eax, 0x28", 0x2481EE,
+     "em00 2480A0: (int)+F48 == 40 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x248289, "cmp eax, 0x2d", 0x248516,
+     "em00 2480A0: (int)+F48 == 45 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x24886E, "cmp eax, 0xd", 0x24888C,
+     "em00..em04/em7a 248780: (int)+F48 == 13 starts a sound once a stock pass; the "
+     "frame steps 1/N a tick at N x, so the equality holds N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x248AA8, "cmp eax, 0xd", 0x248AC6,
+     "em00..em04/em7a 2488B0: (int)+F48 == 13 starts a sound once a stock pass; the "
+     "frame steps 1/N a tick at N x, so the equality holds N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x249C80, "cmp eax, 0xd", 0x249C9E,
+     "em00..em04/em7a 249A90: (int)+F48 == 13 starts a sound once a stock pass; the "
+     "frame steps 1/N a tick at N x, so the equality holds N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x24E023, "cmp eax, 4", 0x24E1C6,
+     "em02 24DF00: (int)+F48 == 4 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x24E30A, "cmp eax, 0x19", 0x24E32A,
+     "em02 24E230: (int)+F48 == 25 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x27F2CA, "cmp ecx, 0x6c", 0x27F42E,
+     "em2d 27EBD0: (int)+2434 == 108 starts a randomized spawn once a stock pass; the "
+     "frame steps 1/N a tick at N x, so the equality holds N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x283147, "cmp eax, 0x28", 0x283183,
+     "em2d 281AE0: (int)+C == 40 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2AC61A, "cmp eax, 0x3c", 0x2AC676,
+     "em60 2AC4D0: (int)+1534 == 60 starts an effect once a stock pass; the frame "
+     "steps 1/N a tick at N x, so the equality holds N ticks and it started N times. "
+     "Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2B04E7, "cmp ecx, 0xb", 0x2B0510,
+     "em60 2AFF90: (int)+1534 == 11 starts an effect once a stock pass; the frame "
+     "steps 1/N a tick at N x, so the equality holds N ticks and it started N times. "
+     "Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2C3B48, "cmp ecx, 0x3e", 0x2C3B71,
+     "em65 2C37C0: (int)+16B8 == 62 starts an effect once a stock pass; the frame "
+     "steps 1/N a tick at N x, so the equality holds N ticks and it started N times. "
+     "Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2C4F88, "cmp r8d, 0x1e", 0x2C4FA8,
+     "em65 2C48D0: (int)+16B8 == 30 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2C6246, "cmp r8d, 0x1e", 0x2C6266,
+     "em65 2C6110: (int)+16B8 == 30 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2C7749, "cmp ecx, 0x28", 0x2C77B0,
+     "em65 2C7460: (int)+16B8 == 40 starts a sound and an effect once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2D6E90, "cmp eax, 0x28", 0x2D6EAE,
+     "em81 2D6D60: (int)+F48 == 40 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x5E4B91, "cmp eax, 0x5a", 0x5E4BA8,
+     "em88 5E4900: (int)+3854 == 90 starts an effect once a stock pass; the frame "
+     "steps 1/N a tick at N x, so the equality holds N ticks and it started N times. "
+     "Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x5F165D, "cmp eax, 0x32", 0x5F170E,
+     "em89 5F1470: (int)+4FA8 == 50 starts a sound and an effect once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2BDDF2, "cmp eax, 0x19", 0x2BDDFB,
+     "em62 2BDCF0: (int)+F48 == 25 starts a volley of projectiles (2BE180: an object "
+     "0x60F and an effect, five calls) once a stock pass; the frame steps 1/N a tick "
+     "at N x, so the equality holds N ticks and it started N times. Between stock "
+     "ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2BDDFB, "cmp eax, 0x23", 0x2BDE04,
+     "em62 2BDCF0: (int)+F48 == 35 starts a volley of projectiles once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2BDE04, "cmp eax, 0x2d", 0x2BDE0D,
+     "em62 2BDCF0: (int)+F48 == 45 starts a volley of projectiles once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2BDE0D, "cmp eax, 0x37", 0x2BE159,
+     "em62 2BDCF0: (int)+F48 == 55 starts a volley of projectiles once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2D1EA8, "cmp eax, 0x3c", 0x2D1EAD,
+     "em69 2D1D80: (int)+F48 == 60 starts an object spawn (2DA050) once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x2D1EAD, "cmp eax, 0x5a", 0x2D1F63,
+     "em69 2D1D80: (int)+F48 == 90 starts an object spawn (2DA050) once a stock pass; "
+     "the frame steps 1/N a tick at N x, so the equality holds N ticks and it started "
+     "N times. Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x5EE041, "cmp eax, 0x2d", 0x5EE052,
+     "em89 5EDE30: (int)+4FA8 == 45 starts a child's motion (5F5A00 restarts it, so N "
+     "starts kept it at frame 0 N ticks) once a stock pass; the frame steps 1/N a tick "
+     "at N x, so the equality holds N ticks and it started N times. Between stock "
+     "ticks the compare reads not equal."),
+    ("objects", "notyet", 0x1D630B, "cmp eax, 0x12", 0x1D6310,
+     "an00 1D6220: (int)+F48 == 18 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x1D6310, "cmp eax, 0x24", 0x1D63E4,
+     "an00 1D6220: (int)+F48 == 36 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x1D6A5E, "cmp eax, 0x12", 0x1D6A63,
+     "an00 1D68C0: (int)+F48 == 18 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x1D6A63, "cmp eax, 0x24", 0x1D690A,
+     "an00 1D68C0: (int)+F48 == 36 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x1D7238, "cmp eax, 0x12", 0x1D723D,
+     "an00 1D7020: (int)+F48 == 18 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x1D723D, "cmp eax, 0x24", 0x1D7274,
+     "an00 1D7020: (int)+F48 == 36 starts an effect once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x217175, "cmp eax, 0x18", 0x2171A2,
+     "ut12 217020: (int)+F48 == 24 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x217F73, "cmp eax, 0x32", 0x217FBB,
+     "ut1e 217F20: (int)+F48 == 50 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x2F1C31, "cmp eax, 0x1c", 0x2F1C36,
+     "et67 2F1AA0: (int)+F48 == 28 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x2F1C36, "cmp eax, 0x3c", 0x2F1C6D,
+     "et67 2F1AA0: (int)+F48 == 60 starts a sound once a stock pass; the frame steps "
+     "1/N a tick at N x, so the equality holds N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x3703B3, "cmp eax, 0x1c", 0x370429,
+     "vt18 370280: (int)+F48 == 28 starts a camera shake and a sound (20A220) once a "
+     "stock pass; the frame steps 1/N a tick at N x, so the equality holds N ticks and "
+     "it started N times. Between stock ticks the compare reads not equal."),
+    # em60: the 0.5 trial the planner gates once trials up to 0.5 count (em85 has one)
+    ("actor", "notyetb", 0x2A93DE, "comiss xmm13, xmm0", 0x2A9426,
+     "em60 trial: chance 0.5 a tick while the player is 30+ above in area 107 "
+     "(B6B240), success requests state 1701 (after its eligibility tests and the 0.8 "
+     "pick 2A940F inside it); held ticks take the failure 2A9426."),
+    # Counter events (2026-10-07, second session): a sound, effect or motion start keyed to an
+    # exact value (or a multiple) of an integer counter that a pacing family steps on stock
+    # ticks only. tools/frame_events.py --check lists them (kinds counter and modulo).
+    ("actor", "notyet", 0x361701, "cmp byte ptr [rbx + 0xe35], 0xa", 0x361744,
+     "ese0 3615C0: +E35 == 10 starts an effect once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x361744, "cmp byte ptr [rbx + 0xe35], 0x28", 0x361761,
+     "ese0 3615C0: +E35 == 40 starts an effect once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x361B59, "cmp byte ptr [rbx + 0xe36], 0x3a", 0x361B86,
+     "ese0 3619D0: +E36 == 58 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x4855F8, "cmp al, 0x14", 0x4855FC,
+     "cDogLikeHm 485390: +E36 == 20 starts a motion once a stock pass; the counter "
+     "steps on stock ticks only, so the value lasts N ticks and it started N times. "
+     "Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x4855FC, "cmp al, 0x32", 0x485647,
+     "cDogLikeHm 485390: +E36 == 50 starts a motion once a stock pass; the counter "
+     "steps on stock ticks only, so the value lasts N ticks and it started N times. "
+     "Between stock ticks the compare reads not equal."),
+    ("actor", "notyet", 0x5EB553, "cmp dword ptr [rbx + 0x50c4], 0x12c", 0x5EB584,
+     "em89 5EB440: +50C4 == 300 starts an effect once a stock pass; the counter steps "
+     "on stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x21C10A, "cmp ecx, eax", 0x21C134,
+     "ut3b 21BE10: +E40 % 30 == 0 starts a sound once a stock pass; the counter steps "
+     "on stock ticks only, so each multiple of 30 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x237141, "cmp word ptr [rsi + 0xe3c], 0x5a", 0x237180,
+     "utf6 236A50: +E3C == 90 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x237180, "cmp word ptr [rsi + 0xe3c], 0x3c", 0x2371C1,
+     "utf6 236A50: +E3C == 60 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x2371C1, "cmp word ptr [rsi + 0xe3c], 0x1e", 0x236EBC,
+     "utf6 236A50: +E3C == 30 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x237109, "cmp ecx, eax", 0x237136,
+     "utf6 236A50: +E40 % 30 == 0 starts a sound once a stock pass; the counter steps "
+     "on stock ticks only, so each multiple of 30 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x2FDA77, "cmp word ptr [rdi + 0x1084], 0x1e", 0x2FDAC5,
+     "gtfe 2FD970: +1084 == 30 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x342010, "cmp ecx, eax", 0x34203A,
+     "cEnemyObj 341F10: +E42 % 30 == 0 starts a sound once a stock pass; the counter "
+     "steps on stock ticks only, so each multiple of 30 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x342132, "cmp ecx, eax", 0x34215C,
+     "cEnemyObj 341F10: +E42 % 30 == 0 starts a sound once a stock pass; the counter "
+     "steps on stock ticks only, so each multiple of 30 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x342480, "cmp ecx, eax", 0x3424AA,
+     "cEnemyObj 3423D0: +E42 % 30 == 0 starts a sound once a stock pass; the counter "
+     "steps on stock ticks only, so each multiple of 30 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x4D1121, "cmp al, 0x64", 0x4D1154,
+     "et69 4D1000: +10E0 == 100 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x57B4B8, "cmp cx, 0x3c", 0x57B4F2,
+     "ut2b 57AC60: +E3C == 60 starts a motion once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x57DC33, "cmp ecx, eax", 0x57DC5D,
+     "ut32 57D950: +E40 % 25 == 0 starts a sound once a stock pass; the counter steps "
+     "on stock ticks only, so each multiple of 25 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x57F889, "cmp ecx, eax", 0x57F8B3,
+     "ut4a 57F760: +E40 % 90 == 0 starts a sound once a stock pass; the counter steps "
+     "on stock ticks only, so each multiple of 90 lasts N ticks and it started N "
+     "times. Between stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x5A97C1, "cmp byte ptr [rdi + 0x1117], 1", 0x5A97EF,
+     "utf0 5A9750: +1117 == 1 starts an effect once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("objects", "notyet", 0x5A980E, "cmp byte ptr [rdi + 0x1117], 1", 0x5A983C,
+     "utf0 5A9750: +1117 == 1 starts an effect once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("player", "notyet", 0x3B00E4, "cmp word ptr [rsi + 0xe3c], 0x6e", 0x3B0123,
+     "pl00 3AFA90: +E3C == 110 starts an effect once a stock pass; the counter steps "
+     "on stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("player", "notyet", 0x3B024B, "cmp word ptr [rsi + 0xe3e], 0x50", 0x3B027D,
+     "pl00 3AFA90: +E3E == 80 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("player", "notyet", 0x3B027D, "cmp word ptr [rsi + 0xe3e], 0x62", 0x3B02AF,
+     "pl00 3AFA90: +E3E == 98 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("player", "notyet", 0x3B044C, "cmp word ptr [rsi + 0xe3e], 0x5f", 0x3B047E,
+     "pl00 3AFA90: +E3E == 95 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    ("player", "notyet", 0x3B047E, "cmp word ptr [rsi + 0xe3e], 0x6f", 0x3B04B0,
+     "pl00 3AFA90: +E3E == 111 starts a sound once a stock pass; the counter steps on "
+     "stock ticks only, so the value lasts N ticks and it started N times. Between "
+     "stock ticks the compare reads not equal."),
+    # Bit tests on paced counters: an every-8th (or 16th) count event whose bits hold N ticks at N x.
+    ("player", "notyet", 0x3A4543, "test byte ptr [rbx + 0xe3c], 0xf", 0x3A45EF,
+     "pl00 3A4480: (+E3C & 15) == 0 starts an effect every 16 counts; memory_timers.h "
+     "steps +E3C on stock ticks only, so the bits hold N ticks and it started N times. "
+     "Between stock ticks the test reads nonzero."),
+    ("player", "notyet", 0x3BDDB6, "test byte ptr [rdi + 0xe3c], 7", 0x3BDDF2,
+     "pl00 3BDCB0: (+E3C & 7) == 0 starts an effect every 8 counts; the counter steps "
+     "on stock ticks only, so it started N times. Between stock ticks the test reads "
+     "nonzero."),
+    ("player", "notyet", 0x3BE15A, "test byte ptr [rdi + 0xe3c], 7", 0x3BE196,
+     "pl00 3BDCB0, the other sub-state: (+E3C & 7) == 0 starts the same effect every 8 "
+     "counts, as 3BDDB6."),
+    ("player", "notyet", 0x3C985A, "test byte ptr [rdi + 0xe3e], 7", 0x3C9886,
+     "pl00 3C96A0: (+E3E & 7) == 0 starts an effect every 8 counts; the counter steps "
+     "on stock ticks only, so it started N times. Between stock ticks the test reads "
+     "nonzero."),
+    ("objects", "notyet", 0x5625A4, "test byte ptr [rbx + 0xe3e], 7", 0x5625D5,
+     "uta5 562410: (+E3E & 7) == 0 starts an effect every 8 counts; the counter steps "
+     "on stock ticks only, so it started N times. Between stock ticks the test reads "
+     "nonzero."),
+    # Heading movers, 2026-10-08: retained stock-unit distances applied every tick.
+    ("player", "callscale", 0x37F0DF, "call 0x1802da460", (0x2DA460, "xmm1"),
+     "wp00 action 37F060: signed direction +10F4 times 3.5 moves every tick during "
+     "the already-paced +E3C wait. Scale the applied distance, retaining the "
+     "direction byte and heading +10F0."),
+    ("player", "callscale", 0x3870B3, "call 0x1802da460", (0x2DA460, "xmm1"),
+     "wp09 action 387010: signed direction +111C times 6.5 moves every tick during "
+     "the already-paced +E3C wait. Neither the retained direction nor heading "
+     "+1118 carries dt; scale only the distance."),
+    ("player", "callscale", 0x38A0B8, "call 0x1802da460", (0x2DA460, "xmm1"),
+     "wp0f action 389FF0: signed direction +10F4 times 3.5 moves every tick during "
+     "the already-paced +E3C wait. Scale only the distance; the retained direction "
+     "and heading +10F0 have stock units."),
+    ("player", "callscale", 0x39AD9F, "call 0x1802da460", (0x2DA460, "xmm1"),
+     "wp47 action 39AD20: signed direction +10E4 times 3.5 moves every tick during "
+     "the already-paced +E3C wait. The brush descriptor initializes that byte "
+     "once at 39A98D; scale only the distance, preserving heading +10E0."),
+    ("actor", "dst", 0x2A863A, "movss xmm2, dword ptr [rcx + 0x1080]",
+     ("scale", 0x2A8650),
+     "em60 helper 2A8630: its only caller 2AD82E passes retained stock-unit velocity "
+     "+1590 in airborne state 6. Scale the speed's read before the two vector "
+     "products and 2DA3F0 move, preserving the stored vector, motion factor +F54 "
+     "and already-scaled gravity at 2AD83B."),
+    ("player", "lin", 0x38A973, "movss xmm3, dword ptr [rip + 0x2e855d]",
+     (0x672ED8, 10.0),
+     "wp0f action 38A8F0: initializes transient +E10=(0,0,10,1), applied by 2DA3F0 "
+     "every tick during the paced first-flight wait. Scale this outbound distance; "
+     "the subsequent homing phase rebuilds the vector each tick."),
+    ("player", "lin", 0x38AA0D, "movss xmm1, dword ptr [rip + 0x2eef9f]",
+     (0x6799B4, 4.0),
+     "wp0f action 38A8F0 homing: rebuilds +E10 from normalized owner displacement "
+     "each tick, multiplies it by 4, then adds it to position. Scale this movement "
+     "distance, preserving the target geometry and normalization."),
+    ("player", "lin", 0x389A98, "mulss xmm0, dword ptr [rip + 0x2ebfec]",
+     (0x675A8C, 16.0),
+     "wp0e action 389A30: unsigned random times 16 degrees is added to +B0 and "
+     "wrapped every tick, outside the one-time setup. Scale only this angular "
+     "increment; preserve the RNG draw and the independent +E14 heading."),
+    # The hovering bobbers, 2026-10-09: a phase +E40 in degrees, += 1 a tick, taken
+    # % 360 into sines for the hover height (a blend row's target) and a sway that
+    # 2DA3F0 adds in the model's frame every tick. The census filed four of the
+    # phase stores as state ("stepped with a sibling reset": +1238/+1118/+E18 = 0
+    # every tick beside them), so those phases ran N x. With the phase on stock
+    # ticks, a sway value holds N ticks: the applied sway gets s.
+    ("actor", "count", 0x2D96AB, "mov word ptr [rdi + 0xe40], r8w", None,
+     "em8f 2D9460, while B6B2A0 bit 14 is clear (the usual branch): the bob's phase "
+     "+E40 += 1 a tick, in degrees, read % 360 for the hover target and the sway; "
+     "+1238 = 0 beside it every tick, not a state step"),
+    ("actor", "callvec", 0x2D9819, "call 0x1802da3f0", (0x2DA3F0, "rdx"),
+     "em8f 2D9460: 2DA3F0 adds (sin(4 x +E40 deg), 0, sin(6 x +E40 deg)) to the "
+     "position in the model's frame every tick (x 1.5 and x 2.5 while B6B2A0 bit 14 "
+     "is set); +E10..+E18 are rewritten before each call (2D9940 zeroes them, the "
+     "hit state 2D90E0 sets its own). With +E40 on stock ticks the vector holds N "
+     "ticks: the mover gets a copy with xyz x s, +E10/+E18 keep stock values"),
+    ("objects", "count", 0x560932, "mov word ptr [rdi + 0xe40], r8w", None,
+     "uta4 5607A0: the bob's phase +E40 += 1 a tick, in degrees, read % 360 for the "
+     "hover target and the sway (+1118 = 0 beside it every tick); as 5616C0's "
+     "561862"),
+    ("objects", "lin", 0x560A25, "mulss xmm0, dword ptr [rip + 0x1113db]",
+     (0x671E08, 0.5),
+     "uta4 5607A0: +E10 = sin(4 x +E40 deg) x 0.5 (+E18 = 0), which 2DA3F0 adds to "
+     "the position in the model's frame every tick; with the phase on stock ticks "
+     "it holds N ticks, so K x s"),
+    ("objects", "lin", 0x561974, "mulss xmm0, dword ptr [rip + 0x1182f8]",
+     (0x679C74, 0.4000000059604645),
+     "uta4 5616C0: +E18 = sin(6 x +E40 deg) x 0.4 + 0.4 (+E10 = 0), a forward surge "
+     "2DA3F0 adds every tick until the +E3E timer ends the state; +E40 is paced "
+     "(561862), so it moved N times a stock tick's distance: K x s"),
+    ("objects", "lin", 0x561986, "addss xmm0, dword ptr [rip + 0x1182e6]",
+     (0x679C74, 0.4000000059604645),
+     "the same surge's constant term: K x s"),
+    ("objects", "count", 0x56F4A2, "mov word ptr [rdi + 0xe40], r8w", None,
+     "utb6 56F330: the bob's phase +E40 += 1 a tick, in degrees, read % 360 for the "
+     "hover target and the sway (+E18 = 0 beside it every tick)"),
+    ("objects", "lin", 0x56F546, "mulss xmm0, dword ptr [rip + 0x1028ba]",
+     (0x671E08, 0.5),
+     "utb6 56F330: +E10 = sin(4 x +E40 deg) x 0.5 (+E18 = 0), added by 2DA3F0 in the "
+     "model's frame every tick; with the phase on stock ticks it holds N ticks: K x s"),
+    ("objects", "count", 0x570749, "mov word ptr [rdi + 0xe40], r8w", None,
+     "utb7 570640: the bob's phase +E40 += 1 a tick, in degrees, read % 360 for the "
+     "hover target and the sway (+E18 = 0 beside it every tick)"),
+    ("objects", "lin", 0x5707ED, "mulss xmm0, dword ptr [rip + 0x102137]",
+     (0x67292C, 0.20000000298023224),
+     "utb7 570640: +E10 = sin(4 x +E40 deg) x 0.2 (+E18 = 0), added by 2DA3F0 in the "
+     "model's frame every tick; with the phase on stock ticks it holds N ticks: K x s"),
+    # Off the patched path, 2026-10-09: candidates coverage had counted covered
+    # because a patch of another branch lay within 8 bytes of their load ..
+    # store (coverage_report.py now asks for the update's own path).
+    ("emitter", "lin", 0x195186, "subss xmm0, dword ptr [rip + 0x4e0aa6]", (0x675C34, 0.25),
+     "emitter age 1950D0, while 23B750 says slow motion is on (9C1F50 +234 == 1): the "
+     "spawn countdown +19C -= 0.25 a tick (its other branch's -= 1 is phase_steps.h "
+     "195198's)"),
+    ("objects", "lin", 0x31E93D, "addss xmm0, dword ptr [rip + 0x358cab]",
+     (0x6775F0, 0.05000000074505806),
+     "hm19 31E8A0: material 1's +5C += 0.05 a tick on the branch whose material 2 "
+     "phase_steps.h 31E94F steps; the other branch is 31E8E7's row"),
+    ("objects", "lin", 0x32208A, "addss xmm0, dword ptr [rip + 0x35555e]",
+     (0x6775F0, 0.05000000074505806),
+     "hm26 322000: material 2's +5C += 0.05 a tick once frame +F48 passes 15 (the "
+     "other branch's -= 0.05 is phase_steps.h 3220BB's)"),
+    ("objects", "lin", 0x2EA51E, "addss xmm0, dword ptr [rip + 0x38e256]",
+     (0x67877C, 0.02500000037252903),
+     "et2e 2EA460: +D2C += 0.025 a tick up to 1 while +1160 is clear (the fade-out's "
+     "-= 0.04 is phase_steps.h 2EA4F4's)"),
+    ("objects", "lin", 0x59975E, "subss xmm0, dword ptr [rip + 0xd84a2]", (0x671C08, 1.0),
+     "et99 599590: +13C0 -= 1 a tick while +13C5 is set, a sound when it reaches exactly "
+     "20; with K x s (s = 1/2^k) it still passes 20.0 exactly, on one tick"),
+    ("objects", "lin", 0x4AD049, "addss xmm0, dword ptr [rip + 0x1ca59f]",
+     (0x6775F0, 0.05000000074505806),
+     "motion blend 4AC680 (from 4BA500 via 4AEB70): weight +F88 += 0.05 a tick while "
+     "+FF0 bit 5 is clear (the other way's -= 0.05 is phase_steps.h 4AD00C's)"),
+    ("objects", "src", 0x4AD022, "subss xmm0, xmm6", None,
+     "motion blend 4AC680: with +FF0 bit 15, +F88 -= xmm6 more a tick, xmm6 = 0.1 "
+     "(4ACFBA, also read by later multiplies, so not its load)"),
+    ("objects", "src", 0x4AD05F, "addss xmm0, xmm6", None,
+     "motion blend 4AC680: with +FF0 bit 15, +F88 += xmm6 = 0.1 more a tick"),
+    ("objects", "lin", 0x622951, "subss xmm1, dword ptr [rip + 0x4f4ab]",
+     (0x671E04, 0.10000000149011612),
+     "622870 (from 6262D0): [B75110] +144 approaches its target by 0.1 a tick, down "
+     "here (up is phase_steps.h 622933's)"),
+    ("objects", "lin", 0x648F67, "subss xmm0, dword ptr [rip + 0x30cc1]",
+     (0x679C30, 0.019999999552965164),
+     "648CE0: [B759A8] +28's +D2C approaches xmm6 by 0.02 a tick, down here (up is "
+     "phase_steps.h 648F41's)"),
+    ("actor", "count", 0x2770FB, "mov word ptr [rsi + 0xe3c], ax", None,
+     "em2b 276DE0 state 3: +E3C -= 1 a tick; at 0 it fires projectile 0x607 and "
+     "reloads 10 or 20, so it fired N times as often (the volley index +E3E is an "
+     "event counter now, event_counters.NOT_PACED 2770E3)"),
+    ("actor", "count", 0x25544F, "mov word ptr [rdi + 0xe3c], ax", None,
+     "255290 (from 2529B0) state 1: +E3C (60 or another reload) -= 1 a tick while not "
+     "negative, then the next state"),
+    ("actor", "count", 0x5DC898, "mov word ptr [rsi + 2], ax", None,
+     "em87 5DBA90 case 8 (a projectile record): +2 -= 1 a tick; at 30 an effect, at "
+     "44..41 hit tests (deduplicated by the target's +E76)"),
+    ("actor", "notyet", 0x5DC89C, "cmp ax, 0x1e", 0x5DC8E0,
+     "the same: `+2 - 1 == 30` starts effect 0x32 once; with +2 on stock ticks the "
+     "value holds N ticks, so between stock ticks the compare reads not equal"),
+    ("objects", "count", 0x375FC4, "mov byte ptr [rcx + 0xe36], al", None,
+     "vtca 375EB0: +E36 -= 1 a tick down to 1 (+D2C = 0 there), then +D2C fades in; "
+     "between stock ticks the decremented al still meets `== 1` (+D2C = 0 again, "
+     "idempotent)"),
+    ("objects", "count", 0x402BE4, "mov dword ptr [rdi + 0x6c], eax", None,
+     "cCockMoney 402B00 (the money display, vt6AFDD8 slot 3): the shown amount +6C += "
+     "1 + (real - shown) / 30 a tick while below the real amount, so it counted up N x "
+     "as fast (its hold timer +80 is integer_skips.h 402BEB's)"),
+    ("objects", "lin", 0x2E54AD, "addss xmm0, dword ptr [rip + 0x39474b]",
+     (0x679C00, 0.03490658476948738),
+     "et0f 2E5330: while 413B60 answers yes, heading +B4 += 2 degrees a tick, wrapped "
+     "(the other way it turns toward a point, 2E5711's steer row)"),
+    # A patch beside the step, not on it, 2026-10-09: updates coverage counted
+    # covered (a row on their own path) while one of their own steps had none.
+    ("objects", "lin", 0x209E73, "addss xmm0, dword ptr [rip + 0x470075]",
+     (0x679EF0, 0.03999999910593033),
+     "cKiType000 209CD0: +D2C gains 0.04 more a tick while (+E79 & 15) == 15, beside "
+     "phase_steps.h 209E56's 0.02"),
+    ("objects", "lin", 0x56896F, "addss xmm1, dword ptr [rip + 0x109491]", (0x671E08, 0.5),
+     "utaa 568590: speed +E10 gains 0.5 more a tick while the target is over 30 ahead, "
+     "beside phase_steps.h 568940's 0.2 (the move 56892C is scaled)"),
+    ("objects", "lin", 0x56AA1C, "addss xmm1, dword ptr [rip + 0x1073e4]", (0x671E08, 0.5),
+     "utab 56A640: the same as utaa's 56896F"),
+    ("actor", "lin", 0x2A8ADC, "mulss xmm0, dword ptr [rip + 0x3cfdac]",
+     (0x678890, 0.029999999329447746),
+     "em60 2A8820: +1530 -= speed x 0.03 a tick while 2B4400 answers 0 (the other way's "
+     "-= speed is 2A8C4E's row)"),
+    ("player", "lin", 0x3A25C1, "subss xmm0, dword ptr [rip + 0x2d34af]", (0x675A78, 5.0),
+     "wp5f 3A2530: the remaining distance +1108 -= 5 a tick outside slow motion while "
+     "the forward step (callscale 3A25D1) moves; it ran out after a quarter of the way"),
+    ("objects", "lin", 0x3FCF9A, "subss xmm0, dword ptr [rip + 0x285232]", (0x6821D4, 19.0),
+     "cCockGameOver 3FCF50: +6C -= 19 a tick, beside its fields' phase_steps.h rows"),
+    ("actor", "count", 0x2787B5, "mov word ptr [rsi + 0xe3c], ax", None,
+     "em2b 278590: +E3C -= 1 a tick, then sub-state 4 at 0 (the turn 278793 beside it is "
+     "the steer group's)"),
+    ("actor", "count", 0x2A56B7, "mov word ptr [rbx + 0xe3c], ax", None,
+     "2A53F0: +E3C -= 1 a tick, then state 0x401 at 0 (its +E3E beside it is "
+     "action_timers.h 2A5684's)"),
+    ("objects", "lin", 0x2F4BD5, "subss xmm1, dword ptr [rip + 0x381057]", (0x675C34, 0.25),
+     "et71 2F4A40: velocity +10F4 (y) -= 0.25 a tick, beside its decays' roots "
+     "(decay_factors.h 2F4BBD)"),
+    ("objects", "scaledadd", 0x2F4BF5, "call qword ptr [rip + 0x37c205]", None,
+     "et71 2F4A40: position += velocity +10F0 a tick by cVec::operator+=: s of it (the "
+     "velocity's decays are decay_factors.h's roots, its fall 2F4BD5's)"),
+    # The bosses' moves, 2026-10-09 (2DA3F0's last unconverted callers)
+    ("actor", "blend", 0x5D1599, "mulss xmm3, dword ptr [rip + 0xe448f]",
+     (0x6B5A30, 0.09000000357627869),
+     "em86 5D1080: forward by (distance to Amaterasu - 220) x 0.09 x speed x +F54 a "
+     "tick, toward 220: an approach, 1 - (1 - 0.09)^s (exact at speed x +F54 = 1; at "
+     "0.25 a stock tick's factor is 0.97689 for stock's 0.9775)"),
+    ("actor", "lin", 0x5D22FC, "addss xmm0, dword ptr [rip + 0xea374]",
+     (0x6BC678, 0.008500000461935997),
+     "em86 5D2050 (its dash): speed +544C = +544C x 0.985 (decay_factors.h root) + "
+     "0.0085 a tick: the push K x s, so +544C settles where stock's does"),
+    ("actor", "callvec", 0x5D237F, "call 0x1802da3f0", (0x2DA3F0, "rdx"),
+     "em86 5D2050: forward by 50 x +544C x speed x +F54 a tick: s of it"),
+    ("actor", "countlast", 0x5D3737, "mulss xmm0, dword ptr [rip + 0xe8f41]", None,
+     "em86 5D3600 (param_2 set): speed +544C *= 0.986 on the last tick of each stock "
+     "period (the other branch's 0.965 is decay_factors.h 5D37E4's)"),
+    ("actor", "callvec", 0x5D3970, "call 0x1802da3f0", (0x2DA3F0, "rdx"),
+     "em86 5D3600: forward by K x +544C x speed x +F54 a tick: s of it"),
+    ("actor", "countlast", 0x5DAA7B, "mulss xmm0, dword ptr [rip + 0xe1bfd]", None,
+     "em87 5DA9A0 (param_2 set): speed +535C *= 0.986 on the last tick of each stock "
+     "period (the other branch's 0.965 is decay_factors.h 5DAB28's)"),
+    ("actor", "callvec", 0x5DAC62, "call 0x1802da3f0", (0x2DA3F0, "rdx"),
+     "em87 5DA9A0: forward by K x +535C x speed x +F54 a tick: s of it"),
+    ("actor", "callvec", 0x5F2DC1, "call 0x1802da3f0", (0x2DA3F0, "rdx"),
+     "em89 5F2A60: forward by 50 x +5060 x speed x +F54 a tick (+5060's decay and push "
+     "are decay_factors.h 5F2C2F's and the 0.0065 literals'): s of it"),
+    ("player", "countlast", 0x3B777A, "mulss xmm0, dword ptr [rip + 0x2ba68a]", None,
+     "pl00 3B7320: +E48 *= 0.6 more while +E58 bit 1 is set, beside decay_factors.h "
+     "3B7768's 0.96 root: on the last tick of each stock period, so a period damps by "
+     "0.96 x 0.6 as a stock tick does"),
+    ("objects", "countlast", 0x4684B8, "mulss xmm1, dword ptr [rip + 0x20a470]", None,
+     "camera 468420: +3B4 *= 0.9 more while +2FC is negative, beside decay_factors.h "
+     "468496's 0.85 root: on the last tick of each stock period"),
+    # 2026-10-10: updates coverage counted covered while a step of theirs is
+    # converted nowhere on its own path, found by tools/trace_steps.py over every
+    # covered census site (the 319 field/register steps of 10-09 and the rest).
+    ("player", "lin", 0x3C180C, "movss xmm3, dword ptr [rip + 0x2b83f4]",
+     (0x679C08, 0.13962633907794952),
+     "pl00 3C13F0: past +E3C 10 (paced), heading +B4 turns toward the locked target by "
+     "2DDF90 at most 8 degrees a tick; the sibling state 3C7880 scales the same limit "
+     "(3C7A20)"),
+    ("player", "pre", 0x3CAFBA, "addss xmm0, dword ptr [rbx + 4]", None,
+     "pl00 3CAE60 sub-state 1: while 8909C0's lift reports a height above her, pos.y "
+     "+= its rise speed (169780: 1.5, or 2E3210's per-type table) a tick; xmm0 holds "
+     "only that step"),
+    ("player", "lin", 0x3A25DE, "addss xmm0, dword ptr [rip + 0x2d73ce]", (0x6799B4, 4.0),
+     "wp5f 3A2530: the forward speed +E48 (moved by 2DA410, callscale 3A25D1, stock "
+     "units) gains 4 a tick; its lifetime fade (phase_steps 3A25EE) and remaining "
+     "distance (lin 3A25C1) are paced"),
+    ("player", "lin", 0x38CC76, "addss xmm0, dword ptr [rip + 0x2f1886]",
+     (0x67E504, 0.3490658402442932),
+     "wp12 38CB60: joint 1's +B4 copies +107C, which turns 20 degrees a tick while the "
+     "paced +E3E counts down"),
+    ("player", "lin", 0x38D140, "subss xmm0, dword ptr [rip + 0x2ecb58]",
+     (0x679CA0, 0.6981316804885864),
+     "wp12 38CF10: the same spin, -40 degrees a tick while the paced +E3C counts down"),
+    ("player", "lin", 0x39BA74, "subss xmm0, dword ptr [rip + 0x2da00c]", (0x675A88, 14.0),
+     "wp47 39B950: the hit point's distance +E28 (11 at the start) falls 14 a tick "
+     "while the paced +E3C counts 18 down; each tick's 2DC7B0 hit test sits at that "
+     "distance"),
+    ("actor", "pre", 0x2C1AC2, "addss xmm2, dword ptr [rdi + 0x16bc]", None,
+     "em65 2C0A60 (vt 8): +16BC += the motion factor +F54 a tick, an elapsed-time "
+     "clock read as (int) against 25-tick windows (2C4FB8, 2C6276); its sibling +16B8 "
+     "has the step row 2C1ABA"),
+    ("actor", "src", 0x282757, "addss xmm0, dword ptr [r14 + 0x1080]", None,
+     "em2d 281AE0, sub-objects in states 1..3 under slow time (B6B2BC bit 21): +C "
+     "gains the speed +1080 three times a tick; the first add has the step row 282744, "
+     "this is the second"),
+    ("actor", "src", 0x282765, "addss xmm0, dword ptr [r14 + 0x1080]", None,
+     "em2d 281AE0: the third add of the same speed"),
+    ("actor", "lin", 0x5F2B39, "movss xmm2, dword ptr [rip + 0xc992f]",
+     (0x6BC470, 0.006500000134110451),
+     "em89 5F2A60: the speed field +5060 approaches 3 x +505C by 0.0065 a tick; the "
+     "four nearer bands have lin rows (5F2AAD..5F2B19), this is beyond 500"),
+    ("actor", "lin", 0x5F2B59, "movss xmm2, dword ptr [rip + 0xc990f]",
+     (0x6BC470, 0.006500000134110451),
+     "em89 5F2A60: the same push beyond 1000"),
+    ("actor", "lin", 0x5F2B70, "movss xmm2, dword ptr [rip + 0xc98f8]",
+     (0x6BC470, 0.006500000134110451),
+     "em89 5F2A60: the same push between 100 and 500"),
+    ("actor", "lin", 0x5F2C1F, "movss xmm2, dword ptr [rip + 0x8f1d9]",
+     (0x681E00, 0.005499999970197678),
+     "em89 5F2A60: the other mode (dl = 0): the push 0.0055 for every band"),
+    ("actor", "srcroot", 0x28D9CF, "mulss xmm0, dword ptr [rip + 0x3ec265]", None,
+     "em4d 28D810 (em4d em4e em50): the forward speed +E18 (moved by 2DA410, callscale "
+     "28D9FD) grows x1.2 a tick to its cap of 7"),
+    ("actor", "count", 0x5F0A01, "inc byte ptr [rdi + 0xe37]", None,
+     "em89 5F08E0 (from 5ED890): +E37 counts every tick (every 4th frame under slow "
+     "time, frame_gates.h's test) while +4FA8 < 0x4B; each multiple of 6 fires a "
+     "volley"),
+    ("actor", "notyet", 0x5F0A1D, "cmp ecx, eax", 0x5F0CAE,
+     "em89 5F08E0: the volley test (+E37 a multiple of 6, jne past it): between stock "
+     "ticks the held count must not fire again"),
+    ("actor", "count", 0x5F1871, "inc byte ptr [rdi + 0xe37]", None,
+     "em89 5F1750 (from 5ED890): the same volley count while +4FA8 < 0x3B"),
+    ("actor", "notyet", 0x5F188D, "cmp ecx, eax", 0x5F1AD9,
+     "em89 5F1750: its volley test"),
+    ("objects", "pre", 0x46849E, "addss xmm0, dword ptr [rdx + 0x3b0]", None,
+     "camera 468420 (from 47C9D0, 47DAB0): pitch +3B0 += the stick velocity +3B4 a "
+     "tick, whose input is the port's x time scale and whose 0.85 decay is "
+     "decay_factors.h's root; the other camera modes' pre rows (46832D, 468698, "
+     "468F27)"),
+    ("objects", "dst", 0x41F615, "divss xmm6, dword ptr [rip + 0x258d0f]", None,
+     "cSubScrFilesInfoMess 41F5B0: the panel's +24 moves by (a.y - b.y) / 15 a tick "
+     "while the countdown +D4 (count 41F62B) runs 15 stock ticks"),
+    ("objects", "dst", 0x420359, "divss xmm6, dword ptr [rip + 0x257fcb]", None,
+     "cSubScrFilesInfoMess 4202F0: the same slide back (its countdown has count "
+     "42036F)"),
+    ("objects", "src", 0x4F0ED0, "addss xmm0, dword ptr [rbx + 0x1164]", None,
+     "ut23 4F0CD0: the spin +1140 += +1164 a tick, +1164 ramping by 0.00058 "
+     "(phase_steps 4F0E59, src 4F0EA6) to a cap of 1 degree a tick"),
+    ("objects", "src", 0x4F10AB, "subss xmm1, dword ptr [rbx + 0x1164]", None,
+     "ut23 4F0CD0: the reverse spin, +1140 -= +1164"),
+    ("objects", "src", 0x56FBDF, "subss xmm1, xmm0", None,
+     "utb6 56F760: the distance +E10 (60 down to 30) falls by +E18 a tick, +E18 "
+     "gaining 0.6 a tick (phase_steps 56FBE3)"),
+    ("objects", "src", 0x1C594E, "subss xmm1, xmm0", None,
+     "cMcAction 1C5870: the slide +B8 moves by +BC a tick toward 0, +BC decaying x0.95 "
+     "(decay_factors.h's root)"),
+    ("objects", "src", 0x1C5023, "addsd xmm0, qword ptr [rip + 0x4b34a5]", None,
+     "cMcAction 1C4FA0: after the paced delay +C8 (integer_skips.h), the scale +C4 "
+     "grows by the double 0.1 a tick to 1 beside its pulse phase +CC (phase_steps "
+     "1C5059)"),
+    ("objects", "lin", 0x3FCF6E, "subss xmm1, dword ptr [rip + 0x27c9f2]", (0x679968, 17.0),
+     "cCockGameOver 3FCF50: +68 -= 17 a tick while the countdown +7C (menu count) "
+     "runs, beside +6C's lin 3FCF9A and +70/+74's phase steps"),
+    ("objects", "srcroot", 0x5CBC58, "mulss xmm0, dword ptr [rip + 0xb9fd0]", None,
+     "em85 5CBAD0 (dl != 0): the speed field +343C *= 0.995 a tick before its 0.0065 "
+     "push (lin 5CBC60); the other mode's 0.99 is decay_factors.h's (5CBD05). The "
+     "store is shared behind a jmp, which the decay finder's window does not follow"),
+    ("objects", "count", 0x3D782B, "mov byte ptr [rbx + 6], dil", None,
+     "3D77B0 (a screen wipe drawn each tick): its alpha byte +6 gains 16 a tick to 255 "
+     "beside the wipe's progress +5BE8 (phase_steps 3D7814)"),
+    # 2026-10-10: em86's close-in and the decay list's camera mode.
+    ("actor", "blend", 0x5D1DDD, "mulss xmm3, dword ptr [rip + 0xea897]",
+     (0x6BC67C, 0.11999999731779099),
+     "em86 5D1810, after its switch every tick: forward by (distance to Amaterasu - "
+     "200) x 0.12 x t x speed x +F54 (2DA3F0, 5D1E28), t the turn factor 1..10 from "
+     "the distance to the anchor +5430; an approach toward 200 whose factor reaches 1 "
+     "and past it (stock overshoots there): 1 - (1 - 0.12)^s, exact at t x speed x "
+     "+F54 = 1, as 5D1599 for 5D1080's 220"),
+    ("objects", "srcroot", 0x47AE31, "mulss xmm1, dword ptr [rip + 0x1fd1e7]", None,
+     "camera 47A3A0: the stick velocity +3C0 (input x the port's time scale, idle x "
+     "the mode-table pair) is damped x0.85 a tick after its use; as the other camera "
+     "modes' 0.85 (468365, 4686D8, 468F57)"),
+    ("objects", "pre", 0x47AE44, "addss xmm0, dword ptr [rdi + 0x3bc]", None,
+     "camera 47A3A0: +3BC += the velocity +3C0 a tick before the 0.85; as the other "
+     "camera modes' pre rows (46832D, 468698, 468F27)"),
+    # 2026-10-10: trace_steps.py --check over the port's sites: four falls whose
+    # gravity carries the port's time scale (so +E54 stays in stock units) while
+    # the position takes the whole velocity every tick.
+    ("actor", "pre", 0x484E62, "addss xmm1, dword ptr [rax + 4]", None,
+     "cDogLikeHm 484D40: +E54 -= ts x 0.3, then y += +E54 a tick; the same fall in "
+     "484A20 has pre 484BD6"),
+    ("actor", "pre", 0x599608, "addss xmm1, dword ptr [rax + 4]", None,
+     "et99 599590: +E54 -= ts x 0.3, then y += +E54 a tick, unscaled"),
+    ("actor", "pre", 0x5A469B, "addss xmm1, dword ptr [rax + 4]", None,
+     "utc9 5A4650: +E54 -= ts x 0.3, then y += +E54 a tick, unscaled"),
+    ("actor", "pre", 0x5A65EC, "addss xmm1, dword ptr [rax + 4]", None,
+     "utcf 5A64F0: +E54 -= ts x 0.3, then y += +E54 a tick, unscaled"),
+    # 2026-10-10: the villager sub-object's pushes (4ABE10 from 30D250, 4AB570).
+    # Each copies its push +E10 into the root motion +EC0 every tick, which
+    # 20E960 moves the villager by once its +11E8 bit 14 hands it the
+    # sub-object's motion (3046D0). The motion advance writes +EC0 at the current
+    # rate's share; these pushes wrote stock units, so the villager went N times
+    # as far a tick. +E10 becomes this tick's share (lin on its start), and its
+    # changes land once a stock period, in stock's order around the copy.
+    ("human", "lin", 0x4ABECB, "movss xmm3, dword ptr [rip + 0x1c9c55]", (0x675B28, -1.0),
+     "villager sub-object 4ABE10 (from 30D250), the hop: +E10 = (0, 0, -1) at each "
+     "reload, copied to the root motion +EC0 every tick: -s, this tick's share"),
+    ("human", "count", 0x4ABF08, "movss dword ptr [rbx + 0xe18], xmm0", None,
+     "4ABE10: +E18 += 0.1 (phase_steps' 0.1 x s) before the copy, stored on the first "
+     "tick of each stock period: the push changes by 0.1 x s once a period, before "
+     "that period's copies, as stock's changes once a tick before its copy"),
+    ("human", "count", 0x4ABF12, "mov dword ptr [rbx + 0xe18], edi", None,
+     "4ABE10: the push's clamp at 0 (+E18 = 0 once +E18 + 0.1 x s passes 0), on the "
+     "first tick of each stock period with the store above: tested on the other ticks "
+     "against the same +E18, it ended each ramp a stock tick early"),
+    ("human", "countlast", 0x4ABF27, "mov word ptr [rbx + 0xe3c], ax", None,
+     "4ABE10: +E3C, where the reload (10..25) and the countdown meet, stored on the "
+     "last tick of each stock period: the reload test sees 0 for one whole period, as "
+     "stock's does for one tick, and the hop recurs every R + 1 stock ticks"),
+    ("human", "lin", 0x4AB63B, "movss xmm3, dword ptr [rip + 0x1d3b75]", (0x67F1B8, -4.0),
+     "villager sub-object 4AB570: +E10 = (0, 0, -4) as the state starts, copied to the "
+     "root motion +EC0 every tick for 15 ticks: -4 x s, this tick's share"),
+    ("human", "ulast", 0x4AB67E, "movss xmm2, dword ptr [rip + 0x1ce5f6]", ("scale", 0x4AB694),
+     "4AB570: +E10 *= 0.8 (ScaleXYZ) after the tick's copy: on the last tick of each "
+     "stock period, after that tick's copy, as stock's order puts it"),
+    # 2026-10-10: rows from reading random_rolls.csv's pending draws (tools/roll_reads.py).
+    # Countdowns whose store has a count row but whose zero test (the reload of a random target
+    # and wait) had no gate: on the held ticks after the count stored 0 the reload drew up to 3/4 of
+    # a stock tick early. As 2030D7/203196 did for 2030B0/203160, the test reads "not yet" between
+    # stock ticks, so the draws and the reload come on the stock tick.
+    ("actor", "notyet", 0x203248, "test edx, edx", 0x2032B7,
+     "an0c 203230 (from 1EEF50): the +1170 wander countdown's store has a count row "
+     "(203242) but its zero test reads the old value (edx): between stock ticks the "
+     "test reads \"not yet\", so the new target and wait are drawn on the stock tick, as "
+     "stock's"),
+    ("actor", "notyet", 0x1DC570, "test ax, ax", 0x1DC5E5,
+     "an03 1DC560 (from 1DC600/1DC780): +E3C's zero test (the reload of the random "
+     "target +E10..+E18 and the wait 90..345) beside the count on its decrement "
+     "(1DC5E8): between stock ticks it reads \"not zero\", so the reload comes on the "
+     "stock tick, as stock's"),
+    ("actor", "notyet", 0x205C24, "test al, al", 0x205C73,
+     "205AE0 (every animal's update via 204D70/205A60): the random head-look timer "
+     "+1175's zero test beside the count on its decrement (205C75): between stock "
+     "ticks it reads \"not zero\", so the next look (yaw/pitch within 40 degrees) and "
+     "the reload (+1176 + rand % +1177) come on the stock tick, as stock's"),
+    ("actor", "notyetb", 0x2C6A5B, "comiss xmm0, xmm1", 0x2C6FBC,
+     "em65 2C66F0 (an action, from slot 16's 2C2F30): in its motion's last 15 frames "
+     "(and on the tick it ends) it draws once a tick: 97% requests 0xA01, else 1% each "
+     "2CA3D0, 0x1501, 0x1401; for type 0x266, type 0x211 with +1730 set or off-screen "
+     "the 97% side does nothing, so it draws again every tick: 15 draws a loop at 30, "
+     "60 at 120. Between stock ticks the window's compare reads \"below\" (the return), "
+     "so the window draws on stock ticks only; the end tick's draw (the loop's wrap) "
+     "stays"),
+    # The motion key windows: K <= frame < K + F54 holds for one tick when the frame steps F54 a
+    # tick (the 30 fps mode); the port's 60 fps mode steps F54 x 0.5 (4B9CA9, kModeSelects), so the
+    # window held for 2 ticks at 60 and 4 at 120, and everything keyed in it fired that often. Its
+    # width scaled by s is the step at every rate, so each key fires once, as at 30.
+    ("actor", "src", 0x4B9964, "addss xmm0, dword ptr [rdi + 0xf54]", None,
+     "4B9770's sound/effect key track (from the motion advance 4B9C80, before its "
+     "step): a key K fires on K <= frame < K + F54 (the sounds "
+     "44E3C0/44E620/44E710/44EA00, the footstep dust 2DB8C0); with the frame stepping "
+     "F54 x s (4B9CA9's mode select) the window held 1/s ticks; F54 x s keeps it to "
+     "one tick, as at 30"),
+    ("actor", "src", 0x4B9B06, "addss xmm0, dword ptr [rdi + 0xf54]", None,
+     "4B9770's flag key track: +F32 (cleared each tick at 4B9AE0) gets a key's bits on "
+     "K <= frame < K + F54; its five readers (20F2D0 from 2163FE, a shake's start; "
+     "2475DA, 247A67, 24924E, 304ADE, voices with a random variant) act on each tick "
+     "it is set; F54 x s keeps it to one tick, as at 30"),
+    ("player", "dst", 0x3B2F86, "movss xmm0, dword ptr [rdi + 0xf54]", None,
+     "pl00 3B2CF0's footstep dust: 5 <= frame < 5 + F54 spawns dust of a random "
+     "variant (2DB8C0, rand & 3) on every tick of the window, 1/s ticks with the frame "
+     "stepping F54 x s; the width F54 x s keeps it to one tick, as at 30"),
+    ("player", "dst", 0x3B349A, "movss xmm0, dword ptr [rdi + 0xf54]", None,
+     "pl00 3B2CF0's second footstep dust window (5 <= frame < 5 + F54), as 3B2F86: one "
+     "tick, as at 30"),
+    ("player", "dst", 0x3B37EC, "movss xmm0, dword ptr [rdi + 0xf54]", None,
+     "pl00 3B2CF0's third footstep dust window (5 <= frame < 5 + F54), as 3B2F86: one "
+     "tick, as at 30"),
+    # esp19 (effect type 0x13), the sun's lens flare: its draw (slot 4, 1A55E0) reads back an
+    # occlusion pixel each tick and raises the intensity 9A6B24 by 0.2 while the sun shows (or in
+    # map 0x102); its update (slot 1, 1A5D00) lowers it by 0.25 a tick otherwise and, while it is
+    # not below 0, spawns the flare's sprites (up to 20, one per element) every tick. Each sprite
+    # lives until its keyframe step (18FF60, stock ticks only) reaches its count of 1: two stock
+    # ticks. Spawned on every tick at 120, about four times as many overlapped, and the fades ran
+    # four times as fast.
+    ("effect", "notyetneg", 0x1A5FCA, "test r15d, r15d", 0x1A6147,
+     "esp19 1A5D00 (slot 1): the flare's sprites (up to 20, seeded at 1A602A) are "
+     "spawned every tick its intensity is not below 0, and live two stock ticks; "
+     "between stock ticks the count's test reads negative, so they are spawned on "
+     "stock ticks only and as many overlap as at 30"),
+    ("effect", "lin", 0x1A5F88, "addss xmm0, dword ptr [rip + 0x4d261c]", (0x6785AC, -0.25),
+     "esp19 1A5D00: the flare's intensity 9A6B24 -= 0.25 a tick while its draw saw no "
+     "sun (9A6B21 clear): the fade-out"),
+    ("effect", "lin", 0x1A5A2F, "addss xmm0, dword ptr [rip + 0x4ccef5]",
+     (0x67292C, 0.20000000298023224),
+     "esp19's draw 1A55E0 (slot 4): the flare's intensity += 0.2 a tick, capped at 1, "
+     "while the occlusion readback sees the sun (or in map 0x102): the fade-in"),
+    # The battle list's reinforcement wait 9C4760 (a global, 10 at the list's set-up 23E200): while
+    # fewer enemies are up than the list holds, its spawners (23EF20, 23F070, from 23C420 each tick)
+    # count it down and, at 0, reload 10 and spawn one. It had no row: reinforcements came every
+    # 10 ticks, 83 ms at 120 instead of 333. As 2030D1/2030D7: the count's store on stock ticks
+    # only, and its zero test (of the register) "not yet" between them.
+    ("actor", "count", 0x23EF8A, "mov dword ptr [rip + 0x7857d0], eax", None,
+     "23EF20 (lists with +80 clear): the reinforcement wait 9C4760 -= 1 a tick while "
+     "fewer enemies are up than the list holds; at 0 it reloads 10 and spawns a random "
+     "group's next enemy (23EC00)"),
+    ("actor", "notyet", 0x23EF90, "test eax, eax", 0x23F064,
+     "23EF20: the wait's zero test reads the decremented register: between stock ticks "
+     "it reads \"not yet\", so the reload and the spawn come on the stock tick"),
+    ("actor", "count", 0x23F0E7, "mov dword ptr [rip + 0x785673], eax", None,
+     "23F070 (lists with +80 set): the same wait 9C4760 -= 1 a tick; at 0 it reloads "
+     "10 and spawns the next enemy of the first group short of its count"),
+    ("actor", "notyet", 0x23F0ED, "test eax, eax", 0x23F1DF,
+     "23F070: the wait's zero test, as 23EF90"),
+    # hm8e's slot 32 (3337F0, each tick after the human update 305840 clears +11EC): +1310 counts
+    # down and, at 0, reloads a random 0..15 while the model's materials get animation state 2
+    # (3DE510) for that tick, 0 otherwise: a flicker with no row, four times as often at 120. With
+    # the store on stock ticks only, the held ticks after the count stores 0 take the reload path
+    # too (its draw and store discarded), so state 2 holds one stock period, at most 3/4 of a
+    # stock tick early, and the next stock tick's reload commits. A not-yet on the zero test would
+    # cut the flash to one tick, so there is none.
+    ("human", "count", 0x333869, "mov byte ptr [rbx + 0x1310], al", None,
+     "hm8e 3337F0 (slot 32): the flicker's countdown +1310 -= 1 a tick, reloaded with "
+     "a random 0..15 at 0 while the materials take state 2 for that tick; on stock "
+     "ticks only, the flicker comes at stock cadence and holds a stock period"),
+    # 491BD0 (each tick from 48EBB0, mode +157 = 0 of the minigame object 48EC20 under 490190, while
+    # B6B308 is set): with fewer than six type-0x5C7 objects up, it picks a random entry of its
+    # table's row (rand & 15) and spawns that entry's object with the entry's chance (rand x 254.9
+    # below its byte): a chance a tick, so they came four times as fast at 120. As the em60
+    # trials: between stock ticks the chance's compare reads "below", so it is tried once a stock
+    # tick.
+    ("objects", "notyetb", 0x491DCD, "comiss xmm1, xmm0", 0x491EFA,
+     "491BD0: the spawn's chance (the entry's byte against rand x 254.9) a tick: "
+     "between stock ticks it reads \"below\" (the return), so a spawn is tried once a "
+     "stock tick, as stock's"),
+    # ut1d 532BC0 (its update): two chances a tick while a paced wait is idle: an effect at 1 in 64
+    # when +E40 is 0 (then +E40 = 60), and the material pulse at 1 in 16 when +E3E is 0 (then 30
+    # ticks of sin). Each chance is a draw tested against a mask in memory (`test m, r`): between
+    # stock ticks it reads "not yet" (no effect, no pulse), so each is tried once a stock tick, as
+    # stock's. A not-yet on the waits' zero tests would send the held ticks into their decrements,
+    # which are action_timers.h's (532BEF, 532D57): with that family off and this one on, a 0 would
+    # wrap to 65535.
+    ("objects", "notyet", 0x532C00, "test dword ptr [rip + 0x28cb5a], eax", 0x532C55,
+     "ut1d 532BC0: the effect's chance (rand & 63 == 0) while +E40 is 0: between stock "
+     "ticks it reads \"not yet\", so it is tried once a stock tick"),
+    ("objects", "notyet", 0x532D96, "test dword ptr [rip + 0x28c9e8], eax", 0x532DAA,
+     "ut1d 532BC0: the material pulse's chance (rand & 15 == 0) while +E3E is 0: "
+     "between stock ticks it reads \"not yet\", so it is tried once a stock tick"),
+    # 2026-10-11: the follow-up list's first items (fps-followups.md, ninth pass).
+    # Landing look-aheads: each object's fall moves y by s x vy a tick (vy, +E54, in stock units:
+    # anff 202A30's pre 202B25 for the animals; 20EA30 with xmm2 = speed x s, the step rows on
+    # +1080, for the enemies; 20EA30's callscale rows for the weapons), but `y + vy <= ground`
+    # looked a stock tick ahead: at 120 they snapped to +E50 up to 3 ticks early, a whole stock
+    # tick's fall in one 8 ms tick. pre: y + s x vy, the next tick's position, as an0c's and
+    # wp0b's (1EE7D4, 1ED0D0, 387E5D). The sum feeds only the compare on every path.
+    ("actor", "pre", 0x206209, "addss xmm0, dword ptr [rcx + 4]", None,
+     "an00..an18 (and the other animals sharing slot 40's 206000, the jump/hop "
+     "action): the landing look-ahead y + vy <= ground (+E50) after the motion "
+     "advance; vy is stock-unit (anff 202A30 moves y by s x vy, pre 202B25): y + s x "
+     "vy"),
+    ("actor", "pre", 0x2753D5, "addss xmm0, dword ptr [rax + 4]", None,
+     "em2b 275280 (slot 17 of 680790, update 273FF0, whose fall 20EA30 takes speed x "
+     "s, step 27425C): the landing look-ahead, y = +E50 and the next phase on contact"),
+    ("actor", "pre", 0x277D3B, "addss xmm1, dword ptr [rax + 4]", None,
+     "em2b 2779A0 (slot 16 of 680790): the landing look-ahead after its paced turn and "
+     "step"),
+    ("actor", "pre", 0x28CBEA, "addss xmm1, dword ptr [rax + 4]", None,
+     "em4d/em4e/em50 28CB20 (slot 16 of 681578/681718/681918, update 288D90, fall step "
+     "288FB0): xmm1 = vy after the phase test 28CBD7 (vy <= xmm6: phase 2, unchanged); "
+     "the sum jumps to 28CC54's compare with +E50: only the anticipated height is "
+     "scaled"),
+    ("actor", "pre", 0x29FF74, "addss xmm0, dword ptr [rax + 4]", None,
+     "29FDD0 (slot 17 of 681E58/682040/6822A0/682440, update 29EE50, fall step "
+     "29F009): the landing look-ahead, then y = +E50 and phase 4"),
+    ("actor", "pre", 0x2A0523, "addss xmm0, dword ptr [rax + 4]", None,
+     "2A0400 (slot 17 of the same four classes): the landing look-ahead, then y = +E50 "
+     "and phase 4"),
+    ("player", "pre", 0x384F33, "addss xmm0, dword ptr [rax + 4]", None,
+     "wp04 384E30 (from 3844F0 and its 384A80; fall 20EA30, callscale 3845DA): the "
+     "landing look-ahead after vy = 5 at its set-up 384EBD"),
+    ("player", "pre", 0x386757, "addss xmm1, dword ptr [rax + 4]", None,
+     "wp07 3866C0 (from 386320; fall callscale 386409): the landing look-ahead, then a "
+     "sound and a shake"),
+    ("player", "pre", 0x389AFC, "addss xmm0, dword ptr [rax + 4]", None,
+     "wp0e 389A30 (the imps' dropped weapon, from 389730; fall callscale 3897F7): the "
+     "landing look-ahead, vy = 6 at the drop (242060, 249F83)"),
+    # The unread turns (survey_turn_steps.MANUAL): two per-tick turns of the enemies' wrapper
+    # 23A2E0 whose limit is a stock-unit field. (The five weapon calls were already converted by
+    # their slow-motion dt's dst rows; 24DB65 is a one-off aim; 564FFE had its row.)
+    ("actor", "callscale", 0x25A401, "call 0x18023a2e0", (0x23A2E0, "xmm1"),
+     "em0f 25A310 (from 25A2D0): every tick of phase 1 (and the set-up tick) turns "
+     "toward Amaterasu by at most +E14 x 3 degrees x speed; +E14 = 1 + rand, set once "
+     "per action (25A3D1): a stock-unit limit a tick"),
+    ("actor", "callscale", 0x2766F5, "call 0x18023a2e0", (0x23A2E0, "xmm1"),
+     "em2b 276400 (from 275020): while frame +F48 is in (15, 37) with +E37 clear it "
+     "turns toward Amaterasu by at most +E14 degrees x speed a tick; +E14 ramps from 3 "
+     "by 0.3 x speed a tick (2766FA's step row) to 12: a stock-unit limit"),
+    # wp0e's move: the imps' weapon (type 0x60E, spawned by 24A0D2 and held through the owner's
+    # +1298) is dropped by the knockback 242060 / 249F83: heading +E14 = the imp's, +E18 = -6 (back
+    # along it), +E54 = 6, state 0x101. 389A30 then moves it by +E18 every tick through 2DA460 and
+    # keeps +E18 x 0.9 (decay_factors.h 389AD5, 0.9^s): +E18 is in stock units, and at 120 the drop
+    # slid about 3.8 times as far.
+    ("player", "callscale", 0x389AC8, "call 0x1802da460", (0x2DA460, "xmm1"),
+     "wp0e 389A30: the move by +E18 along +E14 (2DA460's xmm1) a tick, +E18 = -6 at "
+     "the drop and x 0.9 a stock tick after: s of it a tick, the speed itself kept"),
+    # The end-of-animation rolls (random_rolls.csv mixed_guard): a draw on the motion advance's
+    # "ended" answer. A non-looping motion reports its end on every tick after it (4B9C80 keeps
+    # the frame at length - 0.0001), so a roll there that mostly does nothing was retried four
+    # times as often at 120: the animals' 1 in 4 or 1 in 8 that ends a held pose, em60's type
+    # 0x223 waits. A looping motion reports it once a loop, right at any rate. notyetend: between
+    # stock ticks the answer reads "not ended" unless the object's motion loops.
+    ("actor", "callend", 0x1DB882, "call 0x1801bd6d0", (0x1BD6D0,0x1DB895),
+     "an01 1DB670 (from 1D8870's slot 21): the motion's end (4B9B70), then 1 in 4 "
+     "(rand & 3 == 0) requests 0x101 at the join 1DB88B: the draw itself (the end's je "
+     "and the draw's test are short, the join leaves no window); held and not looping "
+     "it answers eax = -1, `test al, 3` reads nonzero and the block returns (rax "
+     "unread: 1D89F4 and the slot-21 dispatchers 20273E/203E97 overwrite it)"),
+    ("actor", "notyetend", 0x1E2E8D, "test al, al", 0x1E2FCE,
+     "an06/an08 1E2DB0 (from 1E04A0's slot 21): the end (4B9B70), then 1 in 4 requests "
+     "a state: the draw 1E2E95"),
+    ("actor", "notyetend", 0x1E5E7C, "test al, al", 0x1E5FAB,
+     "1E5D50: the end of the motion it plays (4BA080, 4B9C80), then 1 in 4: the draw "
+     "1E5E84"),
+    ("actor", "notyetend", 0x1EC6CD, "test al, al", 0x1EC83E,
+     "1EC5B0: the end (4B9B70) of its first motion, then 1 in 4: the draw 1EC6D5"),
+    ("actor", "callend", 0x1EC82B, "call 0x1801bd6d0", (0x1BD6D0,0x1EC83E),
+     "1EC5B0 (from 1E98FE): the end (4B9B70) of its second motion, then 1 in 4 "
+     "requests 0x101 at the join 1EC834: the draw itself, as 1DB882 (rax unread after: "
+     "the slot-21 dispatchers overwrite it)"),
+    ("actor", "notyetend", 0x1EFD67, "test al, 7", 0x1EFD72,
+     "1EFCC0: the end (4B9C80), then 1 in 8 restarts the phase (+E36 = 0): the draw "
+     "1EFD62's test"),
+    ("actor", "notyetend", 0x1F9CFA, "test al, al", 0x1F9A71,
+     "1F9970: the end (4B9B70), then 1 in 4: the draw 1F9D02"),
+    ("actor", "notyetend", 0x1F9E00, "test al, al", 0x1F9A76,
+     "1F9970: the end (4B9B70) of its other motion, then 1 in 4: the draw 1F9E08"),
+    ("actor", "notyetend", 0x1FD4B7, "test al, al", 0x1FD422,
+     "1FD040: the end (4B9C80), then 1 in 4: the draw 1FD4BF"),
+    ("actor", "notyetend", 0x200750, "test al, al", 0x200837,
+     "2006D0: the end (4B9B70), then 1 in 4: the draw 200758"),
+    ("actor", "notyetend", 0x200D17, "test al, 7", 0x200D22,
+     "200C70: the end (4B9C80), then 1 in 8 restarts the phase (+E36 = 0): the draw "
+     "200D12's test"),
+    ("actor", "notyetend", 0x200E46, "test al, 7", 0x200E51,
+     "200D30: the end (4B9C80), then 1 in 8 sets phase 2: the draw 200E41's test"),
+    ("actor", "notyetend", 0x2B3AD7, "test al, al", 0x2B3B78,
+     "em60 2B3960 (from 2AB930's slot 16): the end (239420), then for type 0x223 an "
+     "0.8 / 0.3 pick that does nothing 86% of the time (state 0x1001 or 0xF01 "
+     "otherwise; the others always act): the draws 2B3B0E, 2B3B44"),
+    ("actor", "notyetend", 0x2B3DDD, "test al, al", 0x2B3ED5,
+     "em60 2B3C90 (from 2AB930's slot 16): the end (239420), then for type 0x223 0.6 "
+     "E01, else an 0.8 / 0.3 pick that does nothing 34% of the time (the others always "
+     "act): the draws 2B3E32..2B3EA4"),
+    # an1e 1FCC10's draw 1FCD3F was filed with them, but the motion's end only skips a turn there
+    # (jne to the join 1FCCEE): it is a 1 in 2 a tick, once within 20 of its target (+1160) with
+    # the paced wait +E3E spent, that changes the state. Between stock ticks the test reads "not
+    # yet" (the return), so it is tried once a stock tick.
+    ("actor", "notyet", 0x1FCD35, "cmp word ptr [rbx + 0xe3e], 0", 0x1FCD65,
+     "an1e 1FCC10 (from 1FA7F0): within 20 of +1160, the wait +E3E's test (> 0: "
+     "return); its draw 1FCD3F (rand & 1 == 0 sets state 1 with a random sub-state) "
+     "follows: between stock ticks the wait reads \"not yet\", so the draw is tried once "
+     "a stock tick (the draw's own test has a call in its window)"),
+    # em89 5EC0F0: once Amaterasu has stayed above y = 100 for 450 stock ticks (+5050, counted),
+    # each tick draws 0.98: reset the phase timers +5030/+5028 and maybe start state 0x901 (98%),
+    # else the normal path (2%): +5034's countdown by s x speed, the paced trials, and with the
+    # countdown done the state request 0xB01 or 5F52C0. At 120 the 2% came on four times as
+    # many ticks: the countdown kept its rate on average but its end's request came about 1.2 s
+    # sooner. A notyetb would have cut the countdown to a quarter. hold: decided on the stock
+    # tick and kept for its period, so the period runs the path stock's tick did.
+    ("actor", "hold", 0x5EC245, "comiss xmm1, xmm0", None,
+     "em89 5EC0F0 (slot 8 of 6BCB38, a boss: one at a time): the 0.98 draw 5EC238's "
+     "compare once +5050 > 450: decided once a stock tick and held through the period, "
+     "so the reset path or the normal one runs for the whole period, as for stock's "
+     "tick"),
+    # 2026-10-11: the chain effects' relaxation (esp10, esp31): spring chains integrated once a
+    # tick, the swinging bones' problem (1BA350). Velocities are displacements per stock tick, so
+    # a tick's share of a step is: spring and force pushes x s (dst on the factor a Scale or
+    # operator* takes in xmm2; scaledadd on a force's +=), damping k^s (root), the integration
+    # p += s x v (scaledadd), and a relaxation toward the previous point 1 - (1 - r)^s (blendr).
+    # The length constraints that follow are geometry, right at any rate. At 120 every chain
+    # swung, sagged and settled four times as fast.
+    #
+    # esp10 1A20A0 (slot 1), once its grow-in (+308 to +30C, counted at 1A214D) is done:
+    #   v[i] += (p[i+1] - p[i]) x k (+320), then back from the tail v[i] += (p[i-1] - p[i]) x k;
+    #   for each point but the head: v.y += g (+31C), v *= d (+324), p += v, p += (p[i-1] - p) x r
+    #   (+32C); then the span limit +314 and the head at its owner (18C980) or attach point.
+    ("effect", "dst", 0x1A2269, "movss xmm2, dword ptr [rsi + 0x320]", ("scale", 0x1A2279),
+     "esp10 1A20A0: the forward spring push v[i] += (p[i+1] - p[i]) x +320 a tick "
+     "(Scale's factor): s of it"),
+    ("effect", "dst", 0x1A22E9, "movss xmm2, dword ptr [rsi + 0x320]", ("scale", 0x1A22F9),
+     "esp10 1A20A0: the backward spring push v[i] += (p[i-1] - p[i]) x +320 a tick: s "
+     "of it"),
+    ("effect", "pre", 0x1A2366, "addss xmm0, dword ptr [rax + r12 + 4]", None,
+     "esp10 1A20A0: v.y += g (+31C, in xmm0) a tick: s of it"),
+    ("effect", "root", 0x1A237B, "movss xmm2, dword ptr [rsi + 0x324]", None,
+     "esp10 1A20A0: v *= +324 a tick (the damping Scale takes): +324^s"),
+    ("effect", "scaledadd", 0x1A23A3, "call qword ptr [rip + 0x4cea57]", None,
+     "esp10 1A20A0: p += v a tick (cVec::operator+=): p += s x v"),
+    ("effect", "blendr", 0x1A23CC, "movss xmm2, dword ptr [rsi + 0x32c]", None,
+     "esp10 1A20A0: p += (p[i-1] - p) x +32C a tick, the relaxation toward the "
+     "previous point (operator*'s factor): 1 - (1 - r)^s"),
+    # esp31 1AA210 (slot 1): its sway phase +338 is paced already (1AA23D); the sway vector
+    # (sin(phase) x +324 in x and z) and the force +300 (through the owner's rotation) are made
+    # afresh each tick. From the tail: v[i] += (p[i-1] - p[i]) x k (+31C); from the head: the span
+    # limit +318 on each segment, v[i+1] -= d x k x 0.1 and v[i] += d x k; then for each point but
+    # the head: p += sway x w (w 1, x 0.97 a point, for the first +334 points), v += force,
+    # v *= +320, p += v.
+    ("effect", "dst", 0x1AA3AA, "movss xmm2, dword ptr [rdi + 0x31c]", ("scale", 0x1AA3BC),
+     "esp31 1AA210: the spring push from the tail v[i] += (p[i-1] - p[i]) x +31C a "
+     "tick: s of it"),
+    ("effect", "dst", 0x1AA4C7, "movss xmm2, dword ptr [rdi + 0x31c]", ("scale", 0x1AA4D8),
+     "esp31 1AA210: the segment's push back v[i+1] -= d x +31C x 0.1 a tick "
+     "(operator*'s factor): s of it"),
+    ("effect", "dst", 0x1AA502, "movss xmm2, dword ptr [rdi + 0x31c]", ("scale", 0x1AA514),
+     "esp31 1AA210: the segment's push v[i] += d x +31C a tick: s of it"),
+    ("effect", "dst", 0x1AA57B, "movaps xmm2, xmm8", ("scale", 0x1AA589),
+     "esp31 1AA210: the sway displacement p += sway x w a tick (operator*'s factor, a "
+     "copy of w in xmm2; w itself kept): s of it"),
+    ("effect", "scaledadd", 0x1AA5C1, "call qword ptr [rip + 0x4c6839]", None,
+     "esp31 1AA210: v += force (+300 through the owner's rotation) a tick: v += s x "
+     "force"),
+    ("effect", "root", 0x1AA5CE, "movss xmm2, dword ptr [rdi + 0x320]", None,
+     "esp31 1AA210: v *= +320 a tick (the damping Scale takes): +320^s"),
+    ("effect", "scaledadd", 0x1AA5F6, "call qword ptr [rip + 0x4c6804]", None,
+     "esp31 1AA210: p += v a tick (cVec::operator+=): p += s x v"),
+    # 2026-10-11: the player's half-second sound. pl00 3B2CF0 plays a sound when the frame counter
+    # B6AC20 (every tick) divides by fps / 2: 15 ticks at 30 and 30 at 60, half a second, but the
+    # fps byte reads 60 at 120 as at 60, so every 30 ticks, a quarter second. The quotient is
+    # unread; the divisor register is kept by the stub (div does not write it).
+    ("flag", "divn", 0x3B35F5, "div ecx", 0x3B35EA,
+     "pl00 3B2CF0: a sound (44E3C0, 0x1C) when fc % (fps / 2) == 0: the divisor times "
+     "the flag group's N (2 at 120), half a second at every rate"),
+    ("flag", "divn", 0x3B394E, "div ecx", 0x3B3943,
+     "pl00 3B2CF0: the other half-second sound (0x1C), as 3B35F5"),
+    # 2026-10-11: countdowns that ended early (tools/early_countdowns.py --spec).
+    # A countdown a family paces holds each value for N ticks at N times the rate. Its zero test,
+    # when it runs before the decrement on a tick (the action timers' `test ax, ax; je` at the top,
+    # a `cmp word [F], 0`, or after a count row on the store alone, the old value or the decrement's
+    # own flags), reads 0 on every tick after the stock tick that stored the 0: its zero side acted
+    # up to 3 ticks before stock's next tick, and a countdown reloaded there lost that much a cycle
+    # (a period of R stock ticks for stock's R + 1). Only a transient zero is gated: every path of
+    # the zero side re-arms the field with a nonzero value. Between stock ticks the test
+    # reads "not yet", so the zero side comes on the stock tick, as stock's. 2026-10-12: 101 of
+    # the first 131 rows are gone; they were chosen because their zero side stored the actor's
+    # state bytes, which does not stop the test running again with the field at 0, and then the
+    # active path ran on N - 1 of every N ticks (smoke puffs piling up over a battle's enemies at
+    # 60 and 120, seen in play). early_countdowns --check now fails on that shape. notyet for a count
+    # row's countdown (its group); notyett for the timer families' (action, memory, lea timers),
+    # whose mask it takes, so it never runs while they are off.
+    # Left: zero tests behind a motion's "ended" answer (event_counters.event_gated: 1F13A3,
+    # 1FD14D, 208FB5, 36A1A6, 3C45EB, 562598, 651967, 651BC7): they run once a loop of a looping
+    # motion, and a "not yet" would drop the loop ends that fall between stock ticks; countdowns
+    # that rest at 0 (their zero side is the idle behaviour every tick); two integer_skips.h
+    # system counters (early_countdowns.REVIEWED).
+    ("actor", "notyet", 0x1DBFCF, "cmp word ptr [rcx + 0x1184], 0", 0x1DBFFD,
+     "1DBFB0: register's countdown 1DBFB6/1DBFC8 (world_anims.h count (store)): its "
+     "zero side (store word ptr [rcx + 0x1184], ax at 1DBFE0) acted up to 3 ticks "
+     "before stock's next tick; between stock ticks it reads not yet"),
+    ("actor", "notyet", 0x1DC14A, "cmp word ptr [rcx + 0x1184], 0", 0x1DC178,
+     "1DC130: register's countdown 1DC134/1DC143 (world_anims.h count (store)): its "
+     "zero side (store word ptr [rcx + 0x1184], ax at 1DC15B) acted up to 3 ticks "
+     "before stock's next tick; between stock ticks it reads not yet"),
+    ("actor", "notyet", 0x4847A6, "test al, al", 0x4847D5,
+     "484610: [rdi + 120B]/1's countdown 48479F/4847D7 (world_anims.h): its zero side "
+     "(call 1989F0 at 4847C7) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("actor", "notyet", 0x4A1D44, "test al, al", 0x4A1D83,
+     "4A1A80: [rbx + 1079]/1's countdown 4A1D3D/4A1D85 (world_anims.h): its zero side "
+     "(store byte ptr [rbx + 0x1079], 0x1e at 4A1D75) acted up to 3 ticks before "
+     "stock's next tick; between stock ticks it reads not yet, and the cycle it "
+     "reloads keeps its stock length"),
+    ("actor", "notyet", 0x276312, "test ax, ax", 0x276317,
+     "2762A0: [rbx + 10C2]/2's countdown 27630B/27631A (world_anims.h): its zero side "
+     "(store word ptr [rbx + 0x10c2], ax at 276330) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("actor", "notyet", 0x276CF0, "test ax, ax", 0x276CF5,
+     "276CD0: [rbx + 10C2]/2's countdown 276CE6/276CF8 (world_anims.h): its zero side "
+     "(store word ptr [rbx + 0x10c2], ax at 276D0E) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("actor", "notyet", 0x276F26, "test ax, ax", 0x2770F8,
+     "276DE0: [rsi + E3C]/2's countdown 276F1F/2770FB (world_anims.h): its zero side "
+     "(call ??GcVec@math@wk@@QEBA?AV012@AEBV012@@Z at 276F9B) acted up to 3 ticks "
+     "before stock's next tick; between stock ticks it reads not yet, and the cycle it "
+     "reloads keeps its stock length"),
+    ("actor", "notyet", 0x5D3861, "test eax, eax", 0x5D3865,
+     "5D3600: [rbx + 53E4]/4's countdown 5D3853/5D3867 (world_anims.h): its zero side "
+     "(store dword ptr [rbx + 0x53e4], 0x5a at 5D3874) acted up to 3 ticks before "
+     "stock's next tick; between stock ticks it reads not yet, and the cycle it "
+     "reloads keeps its stock length"),
+    ("actor", "notyet", 0x20297D, "test al, al", 0x2029BC,
+     "202920: [rbx + 1187]/1's countdown 202976/2029BE (world_anims.h): its zero side "
+     "(call qword ptr [rax + 0x60] at 202987) acted up to 3 ticks before stock's next "
+     "tick; between stock ticks it reads not yet, and the cycle it reloads keeps its "
+     "stock length"),
+    ("actor", "notyet", 0x4B335F, "test al, al", 0x4B33BE,
+     "4B3300: [rbx + F1]/1's countdown 4B3358/4B33C0 (world_anims.h): its zero side "
+     "(call 44E530 at 4B33B0) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyet", 0x4D13EF, "test al, al", 0x4D1448,
+     "4D1350: [rbx + E36]/1's countdown 4D13E8/4D144A (world_anims.h): its zero side "
+     "(store byte ptr [rbx + 0xe36], 0x59 at 4D13F3) acted up to 3 ticks before "
+     "stock's next tick; between stock ticks it reads not yet, and the cycle it "
+     "reloads keeps its stock length"),
+    ("objects", "notyett", 0x62F8B2, "test cx, cx", (0x62F8E9,0x62F8AB),
+     "62F700: [rbx + E3C]/2's countdown 62F8A1/62F8AB (lea_timers.h): its zero side "
+     "(call 44E3C0 at 62F8D8) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyett", 0x632411, "test cx, cx", (0x632448,0x63240A),
+     "632230: [rdi + E3C]/2's countdown 632400/63240A (lea_timers.h): its zero side "
+     "(call 44E3C0 at 632437) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyet", 0x2F9A5D, "test ax, ax", 0x2F9A9C,
+     "2F9920: [rbx + E3C]/2's countdown 2F9A56/2F9A9F (world_anims.h): its zero side "
+     "(call 1989F0 at 2F9A80) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyett", 0x215D38, "test cx, cx", (0x215E7A,0x215D31),
+     "215C90: [rbx + E3C]/2's countdown 215D27/215D31 (lea_timers.h): its zero side "
+     "(call 19C850 at 215DE8) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyett", 0x215EC2, "test dx, dx", (0x216053,0x215EBB),
+     "215E90: [rbx + E3C]/2's countdown 215EB1/215EBB (lea_timers.h): its zero side "
+     "(call 19C850 at 215F5E) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyet", 0x224020, "test al, al", 0x224053,
+     "223F20: [rbx + E35]/1's countdown 224019/224055 (world_anims.h): its zero side "
+     "(call 44E3C0 at 224045) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyett", 0x23631B, "test cx, cx", (0x23634D,0x236314),
+     "235A90: [rbx + E3C]/2's countdown 23630A/236314 (lea_timers.h): its zero side "
+     "(call 16AA00 at 236327) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyett", 0x23729C, "test cx, cx", (0x236EC0,0x237295),
+     "236A50: [rsi + E3C]/2's countdown 23728B/237295 (lea_timers.h): its zero side "
+     "(store word ptr [rsi + 0xe3c], ax at 2372B3) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyet", 0x4E40C5, "test eax, eax", 0x4E4158,
+     "4E3F90: [rbx + 0]/4's countdown 4E4106/4E4106 (world_anims.h): its zero side "
+     "(store dword ptr [rbx], eax at 4E40D2) acted up to 3 ticks before stock's next "
+     "tick; between stock ticks it reads not yet, and the cycle it reloads keeps its "
+     "stock length"),
+    ("objects", "notyett", 0x57AAD8, "cmp word ptr [rbx + 0xe3e], 0", (0x57AB13,0x57AB6C),
+     "57A880: [rbx + E3E]/2's countdown 57AB5D/57AB6C (action_timers.h): its zero side "
+     "(call 57CD80 at 57AAFB) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyet", 0x5A339B, "test al, al", 0x5A339F,
+     "5A3340: [rbx + E35]/1's countdown 5A3394/5A33A1 (world_anims.h): its zero side "
+     "(store byte ptr [rbx + 0xe35], 5 at 5A33AE) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyet", 0x5A4AC2, "test al, al", 0x5A4AC6,
+     "5A49A0: [rbx + 10E2]/1's countdown 5A4ABB/5A4AC8 (world_anims.h): its zero side "
+     "(store byte ptr [rbx + 0x10e2], 6 at 5A4AD5) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyet", 0x5A4B84, "test al, al", 0x5A4B88,
+     "5A4B40: [rcx + 10E2]/1's countdown 5A4B7D/5A4B8A (world_anims.h): its zero side "
+     "(store byte ptr [rcx + 0x10e2], 6 at 5A4BA0) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyet", 0x5A4D3F, "test al, al", 0x5A4D43,
+     "5A4CE0: [rdi + 10E1]/1's countdown 5A4D38/5A4D45 (world_anims.h): its zero side "
+     "(store byte ptr [rdi + 0x10e1], 4 at 5A4D52) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyet", 0x5A5A20, "test al, al", 0x5A5AA9,
+     "5A5950: [rdi + 1071]/1's countdown 5A5A19/5A5AAB (world_anims.h): its zero side "
+     "(store byte ptr [rdi + 0x1071], 2 at 5A5A37) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyett", 0x5A704C, "test ax, ax", (0x5A7051,0x5A7054),
+     "5A6F60: [rbx + E3C]/2's countdown 5A7045/5A7054 (action_timers.h): its zero side "
+     "(call 1989F0 at 5A7081) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyet", 0x5A947B, "test al, al", 0x5A947F,
+     "5A9090: [rdi + 1116]/1's countdown 5A9474/5A9481 (world_anims.h): its zero side "
+     "(call 1989F0 at 5A94D2) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    ("objects", "notyet", 0x5A9BD4, "test al, al", 0x5A9BD8,
+     "5A9BC0: [rcx + 10E6]/1's countdown 5A9BCA/5A9BDA (world_anims.h): its zero side "
+     "(store byte ptr [rcx + 0x10e6], 2 at 5A9BE2) acted up to 3 ticks before stock's "
+     "next tick; between stock ticks it reads not yet, and the cycle it reloads keeps "
+     "its stock length"),
+    ("objects", "notyett", 0x244FF5, "test cx, cx", (0x245170,0x244FEE),
+     "244C80: [rsi + E3C]/2's countdown 244FE4/244FEE (lea_timers.h): its zero side "
+     "(call 1989F0 at 24501C) acted up to 3 ticks before stock's next tick; between "
+     "stock ticks it reads not yet, and the cycle it reloads keeps its stock length"),
+    # 2026-10-11: integer phases outside the original census.
+    # These stores commit a retained integer phase once per stock tick. The masked
+    # phases are used before the store and their copied UV values can safely repeat.
+    ("player", "count", 0x16E978, "mov dword ptr [rip + 0x72826e], eax", None,
+     "Celestial brush drawing 16C7E0: 896BEC is the 30-tick idle gap "
+     "reset when a new stroke point is accepted, then sets flag8 on the last recorded "
+     "point; pace elapsed idle time, preserving the point count and current-tick input "
+     "sampling"),
+    ("objects", "count", 0x22BFE6, "mov word ptr [rdi + 0x1158], ax", None,
+     "22BF00: retained +1158 phase gains1 modulo512 each tick, adds phase/511 to both "
+     "camera-facing UV coordinates; pace the phase while retaining current camera "
+     "geometry"),
+    ("objects", "count", 0x3368C3, "mov word ptr [rdi + 0x1310], ax", None,
+     "hm8f 3367E0: retained +1310 phase gains1 modulo512 and adds phase/511 to both "
+     "camera-facing UV coordinates, as22BF00"),
+    ("objects", "count", 0x5A7B36, "mov word ptr [rdi + 0x115e], ax", None,
+     "utd8 5A7A50: retained +115E phase gains1 modulo512 and adds phase/511 to both "
+     "camera-facing UV coordinates; caller5A73B4 is the per-tick update"),
+    ("actor", "count", 0x273778, "mov byte ptr [rbx + 0x1440], al", None,
+     "em2b 2736E0: retained byte+1440 gains1 modulo16 after choosing one of eight "
+     "material UV frames (each shown twice); pace the flipbook, not the actor's other "
+     "update work"),
+    ("actor", "count", 0x2D8D97, "mov byte ptr [rbx + 0x1234], al", None,
+     "em8c update2D8BB0: retained byte+1234 gains1 modulo4 after3DE510 selects that "
+     "frame for materials3..6; pace the flipbook while keeping motion and collisions "
+     "current"),
+    ("objects", "count", 0x2284C5, "mov byte ptr [rbx + 0x10e6], al", None,
+     "228370: retained +10E6 phase gains1 modulo8 while type892 is active; zero emits "
+     "effect variant4, the other collision/state work still runs every tick"),
+    ("objects", "notyet", 0x22848B, "cmp byte ptr [rbx + 0x10e6], sil", 0x2284BA,
+     "228370: the zero of the paced eight-tick emission phase is held between stock "
+     "ticks; gate its compare itself so the emitter emits once, and the held path "
+     "reaches only its own count row in the same group"),
+
+    # Manager elements count stock ticks through the existing actor row23D789.
+    # The installed fps byte is60 at both60 and120; dividing by it halves seconds.
+    ("actor", "stockfps", 0x4B1FE2, "movzx ecx, byte ptr [rip + 0x6b8c5b]", 0x4B1FF4,
+     "script4B1D80: manager slot2 node+40 counts at30Hz through23D789; seconds divide "
+     "by30 while actor pacing is on, retain the original fps byte when off"),
+    ("actor", "stockfps", 0x4FBD8B, "movzx ecx, byte ptr [rip + 0x66eeb2]", 0x4FBD97,
+     "script4FBCB0: manager slot3 node+40 counts at30Hz through23D789; seconds divide "
+     "by30 while actor pacing is on, retain the original fps byte when off"),
+    ("actor", "stockfps", 0x538422, "movzx ecx, byte ptr [rip + 0x63281b]", 0x538432,
+     "script5381A0: manager slot1 node+40 counts at30Hz through23D789; seconds divide "
+     "by30 while actor pacing is on, retain the original fps byte when off"),
+    # Stage callbacks run through4BA500/48BE20/48C120/48C280/135940 every tick.
+    ("actor", "count", 0x4C5C2D, "mov dword ptr [rip + 0x6a7aa9], eax", None,
+     "stage callback4C5900: B6D6DC elapsed count gains1 per callback; old count15 "
+     "plays sound12, not an event tally"),
+    ("actor", "notyet", 0x4C5C33, "cmp edx, 0xf", 0x4C5C4B,
+     "callback4C5900: gate the old-count15 comparison itself so holding the paced "
+     "counter cannot replay sound12; held path goes straight to the return"),
+    ("actor", "count", 0x4C5FE1, "mov dword ptr [rip + 0x6a76fd], eax", None,
+     "stage callback4C5E80: B6D6E4 elapsed count gains1 per callback; old count15 "
+     "plays sound12, not an event tally"),
+    ("actor", "notyet", 0x4C5FE7, "cmp edx, 0xf", 0x4C5FFF,
+     "callback4C5E80: gate the old-count15 comparison itself so holding the paced "
+     "counter cannot replay sound12; held path goes straight to the return"),
+    # B663D8 = cameraB661E0+1F8, decremented by the existing objects gate476030.
+    # Keep constant writers; normalize only the five fps-derived half-second waits.
+    # 2026-10-11: local quake retention and stock-context duration inputs.
+    # The five stockfps rows replace their gameplay-only versions from spec12.
+    # stockpair preserves the source load when unpaced and otherwise uses exact
+    # shipped bits selected by live shadow mode; the duration uses the tick's
+    # captured stock context, matching the engine's earlier FPS-byte update.
+    ("objects", "stockpair", 0x364CB5, "movss xmm0, dword ptr [rdx + rcx*4 + 0x7a81e8]",
+     (0x364C82,0x364CC7),
+     "quake retention: 7A81E8[(mode-1)] feeds only B663D0; while camera gate476030 is "
+     "on use the exact shipped pair selected by live shadow mode, preserving the "
+     "mutable table load when off or mode unknown"),
+    ("objects", "stockpair", 0x37001C, "movss xmm0, dword ptr [rax + rcx*4]", (0x36FFDF,0x37002F),
+     "quake retention B663D0: normalize this local copy to the exact shipped "
+     "live-context pair while camera gate476030 is active; leave the shared mode table "
+     "and its other consumers untouched"),
+    ("objects", "stockpair", 0x3703F5, "movss xmm0, dword ptr [rax + rcx*4]", (0x3703B8,0x370408),
+     "quake retention B663D0: normalize this local copy to the exact shipped "
+     "live-context pair while camera gate476030 is active"),
+    ("objects", "stockpair", 0x3C1E03, "movss xmm0, dword ptr [rax + rdx*4]", (0x3C1DCA,0x3C1E0F),
+     "player quake retention B663D0: restore stock live-context units locally while "
+     "the objects camera gate476030 is active, independent of player movement and "
+     "mode-table switches"),
+    ("objects", "stockpair", 0x3C5FE1, "movss xmm0, dword ptr [rcx + rdx*4]", (0x3C5FA6,0x3C5FEF),
+     "player quake retention B663D0: restore stock live-context units locally while "
+     "the objects camera gate476030 is active"),
+    ("objects", "stockfps", 0x364CBE, "movzx ecx, byte ptr [rip + 0x805f7f]",
+     ("quake",0x364C96,0x364CD8),
+     "quake duration B663D8 is floor(fps/30)*15; while camera gate476030 is active use "
+     "captured stock-context fps30 in gameplay or60 in stock60 screens, retaining the "
+     "original byte when off"),
+    ("objects", "stockfps", 0x370026, "movzx ecx, byte ptr [rip + 0x7fac17]",
+     ("quake",0x370021,0x370040),
+     "quake duration B663D8: normalize the fps input to the camera gate's captured "
+     "stock30/60 context; the tick snapshot matches the engine's FPS-byte sampling "
+     "order"),
+    ("objects", "stockfps", 0x3703FF, "movzx ecx, byte ptr [rip + 0x7fa83e]",
+     ("quake",0x3703FA,0x37041B),
+     "quake duration B663D8: normalize the fps input to the camera gate's captured "
+     "stock30/60 context"),
+    ("objects", "stockfps", 0x3C1DE8, "movzx ecx, byte ptr [rip + 0x7a8e55]",
+     ("quake",0x3C1E08,0x3C1E3C),
+     "player quake duration B663D8: use the objects camera gate's captured stock30/60 "
+     "context, preserving the original byte when that family is off"),
+    ("objects", "stockfps", 0x3C5FE6, "movzx ecx, byte ptr [rip + 0x7a4c57]",
+     ("quake",0x3C5FBD,0x3C6008),
+     "player quake duration B663D8: use the objects camera gate's captured stock30/60 "
+     "context, preserving the original byte when that family is off"),
 ]
 
 # Code nothing can reach, whose tail jumps a gatefn proof may pass over: each
@@ -9265,6 +11908,11 @@ def group_scale(g):
     return GROUP_STRIDE * GROUPS.index(g) + 4
 
 
+def group_timer_mask(g):
+    """the timer families' mask while the group is on (notyett), 0 otherwise"""
+    return GROUP_STRIDE * GROUPS.index(g) + 3
+
+
 def group_mask2(g):
     """the mask shifted left once: count2's gate on the counter's bits 1 and up"""
     return GROUP_STRIDE * GROUPS.index(g) + 1
@@ -9303,6 +11951,19 @@ def emit_probe(pool, probe):
     pool.emit(b"\x9C")
     pool.pool_rel32(b"\xFF\x05", PROBE_OFFSET + 4 * probe)
     pool.emit(b"\x9D")
+
+
+def emit_vec_scale(pool, slot, group):
+    """callvec: the vector at [rdx] copied to the pool slot, x, y and z times s
+    and w as it is (movss copies its bits), then rdx = the copy. xmm4 is
+    volatile and no argument of 2DA3F0 (rcx, rdx)."""
+    for lane in range(4):
+        # movss xmm4, [rdx + 4 lane]
+        pool.emit(b"\xF3\x0F\x10\x22" if lane == 0 else b"\xF3\x0F\x10\x62" + bytes([4 * lane]))
+        if lane < 3:
+            pool.pool_rel32(b"\xF3\x0F\x59\x25", group_scale(group))   # mulss xmm4, [s]
+        pool.pool_rel32(b"\xF3\x0F\x11\x25", slot + 4 * lane)          # movss [slot], xmm4
+    pool.pool_rel32(b"\x48\x8D\x15", slot)                              # lea rdx, [slot]
 
 
 def emit_src(pool, ins, temp, group):
@@ -9550,6 +12211,137 @@ def emit_count_gate(pool, step, skip_bytes, flags, counter, group, last=False, m
     struct.pack_into("<i", pool.code, join, len(pool.code) - join - 4)
 
 
+def emit_counted_prologue(pool, counter, group):
+    """emit_count_gate's bookkeeping and stock-tick test, ending in `pop rax;
+    jnz` with the entry flags still pushed: returns the jnz's rel32 field (to
+    the held path)"""
+    slot = COUNTER_OFFSET + SLOT * counter
+    mask = group_mask(group)
+
+    def jcc8(opcode):
+        pool.emit(bytes([opcode, 0]))
+        return len(pool.code)
+
+    def land(at):
+        pool.code[at - 1] = len(pool.code) - at
+
+    pool.emit(b"\x9C\x50")                                  # pushfq; push rax
+    pool.pool_rel32(b"\xFF\x05", slot + gis.PASSES)
+    pool.game_rel32(b"\x8B\x05", tr.FRAME_COUNTER)          # mov eax, [fc]
+    pool.pool_rel32(b"\x3B\x05", slot + gis.LAST_TICK)
+    same = jcc8(0x74)
+    pool.pool_rel32(b"\x89\x05", slot + gis.LAST_TICK)
+    pool.pool_rel32(b"\xFF\x05", slot + gis.TICKS)
+    pool.pool_rel32(b"\x84\x05", mask)
+    skipped = jcc8(0x75)
+    pool.pool_rel32(b"\xFF\x05", slot + gis.COUNTED)
+    land(same)
+    land(skipped)
+    pool.pool_rel32(b"\x84\x05", mask)                      # gate: test [mask], al
+    pool.emit(b"\x58\x0F\x85")                              # pop rax; jnz held
+    branch = len(pool.code)
+    pool.emit(b"\0" * 4)
+    return branch
+
+
+def emit_motion_gate(pool, step, counter, group, objreg, magic, flag_bytes):
+    """notyetend: the test on a stock tick; between them the test only while
+    the object's current motion loops ([R + F38] set, its magic, header byte
+    7 bit 0), else flag_bytes: the flags of `test al, al` with al = 0 (not
+    ended) for the advance's answer, notyet's for a draw's test below it"""
+    branch = emit_counted_prologue(pool, counter, group)
+    pool.emit(b"\x9D")                                      # stock: popfq; the test
+    tr.emit_relocated(pool, step, None)
+    pool.emit(b"\xE9")
+    join = len(pool.code)
+    pool.emit(b"\0" * 4)
+    struct.pack_into("<i", pool.code, branch, len(pool.code) - branch - 4)
+    # held: the entry flags stay pushed through the motion's checks, so both
+    # ways out start from them (notyet's flags keep CF, PF and AF)
+    pool.emit(b"\x50")                                      # push rax
+    rr, rx, rb, body = tr.modrm_mem(0, tr.GPR[objreg], None, 1, MOTION_FIELD)
+    pool.emit(tr.rex(1, rr, rx, rb) + b"\x8B" + body)       # mov rax, [R + F38]
+    pool.emit(b"\x48\x85\xC0\x74\x00")                      # test rax, rax; jz not_loop
+    jz1 = len(pool.code)
+    pool.emit(b"\x81\x38" + struct.pack("<I", magic) + b"\x75\x00")  # cmp [rax], magic; jne
+    jne = len(pool.code)
+    pool.emit(b"\xF6\x40\x07\x01\x74\x00")                  # test byte [rax+7], 1; jz not_loop
+    jz2 = len(pool.code)
+    pool.emit(b"\x58\x9D")                                  # it loops: pop rax; popfq; the test
+    tr.emit_relocated(pool, step, None)
+    pool.emit(b"\xE9")
+    join2 = len(pool.code)
+    pool.emit(b"\0" * 4)
+    for at in (jz1, jne, jz2):
+        pool.code[at - 1] = len(pool.code) - at
+    pool.emit(b"\x58\x9D" + flag_bytes)                     # not_loop: pop rax; popfq; not yet
+    for at in (join, join2):
+        struct.pack_into("<i", pool.code, at, len(pool.code) - at - 4)
+
+
+def emit_hold_gate(pool, step, counter, group):
+    """hold: on a stock tick the compare, then its flags and fc + 1 to the
+    hold slot (the counter slot after the site's own); between stock ticks
+    the saved flags while the slot holds this period's stock tick, else the
+    compare"""
+    hold = COUNTER_OFFSET + SLOT * (counter + 1)
+    branch = emit_counted_prologue(pool, counter, group)
+    pool.emit(b"\x9D\x50")                                  # stock: popfq; push rax
+    pool.game_rel32(b"\x8B\x05", tr.FRAME_COUNTER)          # mov eax, [fc]
+    pool.emit(b"\xFF\xC0")                                  # inc eax
+    pool.pool_rel32(b"\x89\x05", hold + 8)                  # mov [hold + 8], eax
+    pool.emit(b"\x58")                                      # pop rax
+    tr.emit_relocated(pool, step, None)
+    pool.emit(b"\x9C")                                      # pushfq
+    pool.pool_rel32(b"\x8F\x05", hold)                      # pop qword [hold]
+    pool.emit(b"\xE9")
+    join = len(pool.code)
+    pool.emit(b"\0" * 4)
+    struct.pack_into("<i", pool.code, branch, len(pool.code) - branch - 4)
+    pool.emit(b"\x9D\x50\x51")                              # held: popfq; push rax; push rcx
+    pool.game_rel32(b"\x8B\x05", tr.FRAME_COUNTER)          # mov eax, [fc]
+    pool.pool_rel32(b"\x0F\xB6\x0D", group_mask(group))     # movzx ecx, byte [mask]
+    pool.emit(b"\xF7\xD1\x21\xC8\xFF\xC0")                  # not ecx; and eax, ecx; inc eax
+    pool.pool_rel32(b"\x3B\x05", hold + 8)                  # cmp eax, [hold + 8]
+    pool.emit(b"\x59\x58\x75\x00")                          # pop rcx; pop rax; jne stale
+    jne = len(pool.code)
+    pool.pool_rel32(b"\xFF\x35", hold)                      # push qword [hold]
+    pool.emit(b"\x9D\xEB\x00")                              # popfq; jmp join
+    jmp = len(pool.code)
+    pool.code[jne - 1] = len(pool.code) - jne
+    tr.emit_relocated(pool, step, None)                     # stale: the compare
+    pool.code[jmp - 1] = len(pool.code) - jmp
+    struct.pack_into("<i", pool.code, join, len(pool.code) - join - 4)
+
+
+def emit_end_call(pool, counter, group, objreg, magic):
+    """callend's stub before the common `jmp target`: on a stock tick, and
+    between them while the object's motion loops, on to the generator; else
+    eax = -1 and back to the caller (the call's return address still on the
+    stack)"""
+    branch = emit_counted_prologue(pool, counter, group)
+    pool.emit(b"\x9D\xE9")                                  # stock: popfq; jmp draw
+    stock = len(pool.code)
+    pool.emit(b"\0" * 4)
+    struct.pack_into("<i", pool.code, branch, len(pool.code) - branch - 4)
+    pool.emit(b"\x9D\x50")                                  # held: popfq; push rax
+    rr, rx, rb, body = tr.modrm_mem(0, tr.GPR[objreg], None, 1, MOTION_FIELD)
+    pool.emit(tr.rex(1, rr, rx, rb) + b"\x8B" + body)       # mov rax, [R + F38]
+    pool.emit(b"\x48\x85\xC0\x74\x00")                      # test rax, rax; jz none
+    jz1 = len(pool.code)
+    pool.emit(b"\x81\x38" + struct.pack("<I", magic) + b"\x75\x00")  # cmp [rax], magic; jne
+    jne = len(pool.code)
+    pool.emit(b"\xF6\x40\x07\x01\x74\x00")                  # test byte [rax+7], 1; jz none
+    jz2 = len(pool.code)
+    pool.emit(b"\x58\xEB\x00")                              # it loops: pop rax; jmp draw
+    loops = len(pool.code)
+    for at in (jz1, jne, jz2):
+        pool.code[at - 1] = len(pool.code) - at
+    pool.emit(b"\x58\xB8\xFF\xFF\xFF\xFF\xC3")              # none: pop rax; mov eax, -1; ret
+    pool.code[loops - 1] = len(pool.code) - loops
+    struct.pack_into("<i", pool.code, stock, len(pool.code) - stock - 4)
+
+
 def emit_smode_step(pool, ins, group):
     """`sub r8, [mode]` at N > 1 subtracts the stock context's mode instead:
     cmp byte [mask], 0; je orig; sub r8, [smode]; jmp done; orig: the
@@ -9575,6 +12367,8 @@ def emit_imuln(pool, ins, group):
 
 R32 = {"eax": 0, "ecx": 1, "edx": 2, "ebx": 3, "esp": 4, "ebp": 5, "esi": 6, "edi": 7}
 R32.update({"r%dd" % k: k for k in range(8, 16)})
+R8 = {"al": 0, "cl": 1, "dl": 2, "bl": 3, "bpl": 5, "sil": 6, "dil": 7}
+R8.update({"r%db" % k: k for k in range(8, 16)})
 
 
 def emit_mulflag(pool, ins, group):
@@ -9588,11 +12382,294 @@ def emit_mulflag(pool, ins, group):
 FPS_BYTE = 0xB6AC44
 
 
+def emit_stockfps(pool, ins, group, quake=False):
+    """Read the original byte; use stock units for a paced count while enabled.
+    The zero mask (stock rate or this family off) preserves the original read.
+    movzx/mov r32 both zero the upper half; preserve the incoming flags too.
+    """
+    tr.emit_relocated(pool, ins, None)
+    pool.emit(b"\x9C")
+    pool.pool_rel32(b"\x80\x3D", group_mask(group), trailing=b"\x00")
+    r = R32[ins.reg_name(ins.operands[0].reg)]
+    replacement = (b"\x41" if r >= 8 else b"") + bytes([0xB8 + (r & 7)]) + struct.pack("<I", 30)
+    pool.emit(b"\x74" + bytes([len(replacement)]))
+    pool.emit(replacement + b"\x9D")
+    if quake:
+        # The same snapshot as the camera gate: N=2 alone cannot distinguish
+        # 60-Hz gameplay from a 120-Hz tick in a stock-60 menu.
+        pool.emit(b"\x9C")
+        pool.pool_rel32(b"\x80\x3D", group_mask(group), trailing=b"\x00")
+        pool.emit(b"\x74" + bytes([7 + 2 + len(replacement)]))
+        pool.pool_rel32(b"\x80\x3D", group_smode(group), trailing=b"\x01")
+        pool.emit(b"\x75" + bytes([len(replacement)]))
+        pool.emit(replacement[:-4] + struct.pack("<I", 60))
+        pool.emit(b"\x9D")
+
+
+QUAKE_PAIR = (0x3F64F95D, 0x3F4CCCCD)
+
+
+def emit_stockpair(pool, ins, group):
+    """Keep the original load when unpaced; otherwise use immutable stock bits.
+    movss from memory clears the upper lanes, as the replaced load does.
+    RAX is saved and restored; no shared table write is needed; flags are kept.
+    """
+    pool.emit(b"\xEB\x08")
+    fast = pool.here()
+    pool.emit(struct.pack("<II", *QUAKE_PAIR))
+    tr.emit_relocated(pool, ins, None)
+    pool.emit(b"\x9C")
+    pool.pool_rel32(b"\x80\x3D", group_mask(group), trailing=b"\x00")
+    pool.emit(b"\x74\x00")
+    off = len(pool.code) - 1
+    pool.emit(b"\x50")
+    pool.pool_rel32(b"\x48\x8B\x05", LIVE_MODE_OFFSET)
+    pool.emit(b"\x80\x38\x01")
+    pool.emit(b"\x74\x00")
+    choose_fast = len(pool.code) - 1
+    pool.emit(b"\x80\x38\x02\x75\x00")
+    unknown = len(pool.code) - 1
+    d = gmt.xmm_index(ins.reg_name(ins.operands[0].reg))
+    prefix = b"\xF3" + rex_for(d) + bytes([0x0F, 0x10, ((d & 7) << 3) | 5])
+    pool.pool_rel32(prefix, fast + 4)
+    pool.emit(b"\xEB\x00")
+    done = len(pool.code) - 1
+    pool.code[choose_fast] = len(pool.code) - choose_fast - 1
+    pool.pool_rel32(prefix, fast)
+    for at in (done, unknown):
+        pool.code[at] = len(pool.code) - at - 1
+    pool.emit(b"\x58")
+    pool.code[off] = len(pool.code) - off - 1
+    pool.emit(b"\x9D")
+
+
+def prove_stockpair(dec, targets, ins, endpoints, group):
+    """Prove the indexed mode pair and its sole straight-line quake store.
+    quake_retention13.md records the enclosing camera/cadence identity and
+    the jump-table dominance of 364C37's image-base definition.
+    """
+    if group != "objects" or not any(g == group and k == "gatefn" and a == 0x476030
+                                    for g, k, a, _t, _e, _w in MANIFEST):
+        return "stockpair needs the objects camera gate at 476030"
+    if bytes(dec.img[0x7A81E8:0x7A81F0]) != struct.pack("<II", *QUAKE_PAIR):
+        return "the shipped quake pair bits changed"
+    if not isinstance(endpoints, tuple) or len(endpoints) != 2:
+        return "stockpair needs (mode read, retention store)"
+    mode_at, store_at = endpoints
+    ops = ins.operands
+    if ins.mnemonic != "movss" or len(ops) != 2 or ops[0].type != X.X86_OP_REG or \
+            ops[1].type != X.X86_OP_MEM or ops[1].size != 4 or ops[1].mem.scale != 4:
+        return "stockpair needs a mode-indexed scalar memory load"
+    seq = [i for i in dec.run(mode_at, store_at) if i.address <= store_at]
+    if not seq or seq[0].address != mode_at or seq[-1].address != store_at or \
+            ins.address not in {i.address for i in seq}:
+        return "stockpair endpoints are not a complete instruction path"
+    first = seq[0]
+    if first.mnemonic != "movzx" or first.operands[0].type != X.X86_OP_REG or \
+            first.operands[0].size != 4 or first.operands[1].type != X.X86_OP_MEM or \
+            first.operands[1].size != 1 or first.operands[1].mem.base != X.X86_REG_RIP or \
+            first.address + first.size + first.operands[1].mem.disp != tr.MODE_BYTE:
+        return "stockpair index is not loaded from the mode byte"
+    env = {}
+    if ins.address == 0x364CB5:
+        base_path = [i for i in dec.run(0x364C37, mode_at) if i.address <= mode_at]
+        base = base_path[0]
+        if base.mnemonic != "lea" or base.op_str != "rdx, [rip - 0x364c3e]" or \
+                any(X.X86_REG_RDX in i.regs_access()[1] for i in base_path[1:]):
+            return "364C37 no longer supplies the preserved image base in rdx"
+        env["rdx"] = 0
+    loaded = False
+    dest = gis.canon(ins, ops[0].reg)
+    for i in seq:
+        if i is not first and (i.address in targets or
+                i.mnemonic.startswith(("j", "call", "ret", "loop"))):
+            return "control transfer or entry in stockpair path at %X" % i.address
+        rd, wr = i.regs_access()
+        writes = {gis.canon(i, r) for r in wr}
+        if loaded and i.address != store_at and (dest in writes or
+                dest in {gis.canon(i, r) for r in rd}):
+            return "quake factor has another use before its store at %X" % i.address
+        if i.address == ins.address:
+            m = ops[1].mem
+            if env.get(gis.canon(ins, m.index)) != "mode-1" or \
+                    not isinstance(env.get(gis.canon(ins, m.base)), int) or \
+                    env[gis.canon(ins, m.base)] + m.disp != 0x7A81E8:
+                return "the load is not 7A81E8[(mode-1)]"
+            loaded = True
+        value = None
+        io = i.operands
+        if i is first:
+            value = "mode"
+        elif i.mnemonic == "dec" and env.get(gis.canon(i, io[0].reg)) == "mode":
+            value = "mode-1"
+        elif i.mnemonic == "movsxd" and io[1].type == X.X86_OP_REG:
+            value = env.get(gis.canon(i, io[1].reg))
+        elif i.mnemonic == "lea" and io[1].mem.base == X.X86_REG_RIP:
+            value = i.address + i.size + io[1].mem.disp
+        for reg in writes:
+            env.pop(reg, None)
+        if value is not None:
+            env[gis.canon(i, io[0].reg)] = value
+    last = seq[-1]
+    op = last.operands
+    if last.mnemonic != "movss" or len(op) != 2 or op[0].type != X.X86_OP_MEM or \
+            op[0].mem.base != X.X86_REG_RIP or op[0].size != 4 or \
+            last.address + last.size + op[0].mem.disp != 0xB663D0 or \
+            op[1].type != X.X86_OP_REG or gis.canon(last, op[1].reg) != dest:
+        return "stockpair does not feed the camera retention store at B663D0"
+    return None
+
+
+def prove_stockfps(dec, targets, ins, div_at, group):
+    """Prove the FPS input's arithmetic and the matching group's pacing row.
+    script_seconds12.md and quake_reader12.md establish the record/camera
+    identities. Refuse a changed arithmetic path or a missing pacing row.
+    """
+    ops = ins.operands
+    if ins.mnemonic != "movzx" or len(ops) != 2 or ops[0].type != X.X86_OP_REG or \
+            ops[0].size != 4 or ins.reg_name(ops[0].reg) not in R32 or \
+            ops[1].type != X.X86_OP_MEM or ops[1].size != 1 or \
+            ops[1].mem.base != X.X86_REG_RIP or ops[1].mem.index or \
+            ins.address + ins.size + ops[1].mem.disp != FPS_BYTE:
+        return "stockfps needs movzx r32, byte [B6AC44]"
+    if isinstance(div_at, tuple) and len(div_at) == 3 and div_at[0] == "quake":
+        return prove_quake_fps(dec, targets, ins, div_at[1], div_at[2], group)
+    if not any(g == group and k == "count" and a == 0x23D789 and
+               text == "inc dword ptr [rbx + 0x40]"
+               for g, k, a, text, _extra, _why in MANIFEST):
+        return "the same group's stock-paced element+40 count row is missing"
+    seq = [i for i in dec.run(ins.address, div_at) if i.address <= div_at]
+    if not seq or seq[-1].address != div_at:
+        return "cannot reach the declared seconds division"
+    r = gis.canon(ins, ops[0].reg)
+    for i in seq[1:-1]:
+        if i.address in targets or i.mnemonic.startswith(("j", "call", "ret", "loop")):
+            return "control transfer or entry before the seconds division at %X" % i.address
+        _rd, writes = i.regs_access()
+        if r in {gis.canon(i, x) for x in writes}:
+            return "divisor overwritten at %X" % i.address
+    last = seq[-1]
+    if last.mnemonic != "div" or len(last.operands) != 1 or \
+            last.operands[0].type != X.X86_OP_REG or last.operands[0].size != 4 or \
+            gis.canon(last, last.operands[0].reg) != r or last.address in targets:
+        return "declared division is not a straight-line div of the loaded r32"
+    return None
+
+
+def prove_quake_fps(dec, targets, ins, magic_at, store_at, group):
+    """Prove floor(fps/30)*15 into the duration of the gated camera update."""
+    if ins.reg_name(ins.operands[0].reg) != "ecx" or not any(
+            g == group and k == "gatefn" and a == 0x476030
+            for g, k, a, _text, _extra, _why in MANIFEST):
+        return "quake fps read needs ecx and the same group's camera gate at 476030"
+    lo = min(ins.address, magic_at)
+    seq = [i for i in dec.run(lo, store_at) if i.address <= store_at]
+    by_at = {i.address: i for i in seq}
+    if magic_at not in by_at or not seq or seq[-1].address != store_at:
+        return "quake arithmetic endpoints are not instruction boundaries"
+    magic = by_at[magic_at]
+    if magic.mnemonic != "mov" or magic.op_str != "eax, 0x88888889":
+        return "quake arithmetic needs the unsigned divide-by-30 multiplier"
+    for i in seq[1:]:
+        if i.address in targets or i.mnemonic.startswith(("j", "call", "ret", "loop")):
+            return "control transfer or entry in quake arithmetic at %X" % i.address
+    wanted = [("mul", "ecx"), ("shr", "edx, 4"), ("movzx", "eax, dl"),
+              ("imul", "ecx, eax, 0xf")]
+    found, pos = [], 0
+    for i in seq:
+        if pos < len(wanted) and (i.mnemonic, i.op_str) == wanted[pos]:
+            found.append(i)
+            pos += 1
+    if len(found) != 4 or found[0].address <= max(ins.address, magic_at):
+        return "quake arithmetic is not floor(fps/30)*15"
+    mul, shift, copy, times15 = found
+    for i in seq:
+        _rd, writes = i.regs_access()
+        writes = {gis.canon(i, x) for x in writes}
+        forbidden = set()
+        if i.address < mul.address and i.address not in (magic_at, ins.address):
+            # The registers may hold table pointers before their defining
+            # writes; only protect each value after it has been supplied.
+            forbidden = ({"rax"} if i.address > magic_at else set()) | \
+                        ({"rcx"} if i.address > ins.address else set())
+        elif mul.address < i.address < copy.address and i is not shift:
+            forbidden = {"rdx"}
+        elif copy.address < i.address < times15.address:
+            forbidden = {"rax"}
+        elif times15.address < i.address < store_at:
+            forbidden = {"rcx"}
+        if writes & forbidden:
+            return "quake arithmetic input overwritten at %X" % i.address
+    last = seq[-1]
+    op = last.operands
+    if last.mnemonic != "mov" or len(op) != 2 or op[0].type != X.X86_OP_MEM or \
+            op[0].size != 1 or op[0].mem.base != X.X86_REG_RIP or op[0].mem.index or \
+            last.address + last.size + op[0].mem.disp != 0xB663D8 or \
+            op[1].type != X.X86_OP_REG or last.reg_name(op[1].reg) != "cl":
+        return "quake arithmetic does not store cl to B663D8"
+    return None
+
+
+def emit_divn(pool, ins, group):
+    """push r64; imul r32, dword [N]; the div; pop r64: the remainder of a
+    divisor N times as large, the divisor register kept"""
+    r = R32[ins.reg_name(ins.operands[0].reg)]
+    rex = b"\x41" if r >= 8 else b""
+    pool.emit(rex + bytes([0x50 + (r & 7)]))                            # push r64
+    pool.pool_rel32((b"\x44" if r >= 8 else b"") +
+                    bytes([0x0F, 0xAF, ((r & 7) << 3) | 5]), group_intn(group))
+    tr.emit_relocated(pool, ins, None)                                  # div r32
+    pool.emit(rex + bytes([0x58 + (r & 7)]))                            # pop r64
+
+
+def prove_divn(dec, targets, ins, read_at):
+    """None if `ins` is `div r32` and the straight line from read_at to it is
+    `movzx r32, byte [the fps byte]`, `shr r32, 1` and instructions that
+    neither write r32 nor leave the line, with no way into it after read_at;
+    and the quotient (rax) is unread after the div until it is rewritten"""
+    ops = ins.operands
+    if ins.mnemonic != "div" or len(ops) != 1 or ops[0].type != X.X86_OP_REG or \
+            ops[0].size != 4 or ins.reg_name(ops[0].reg) not in R32:
+        return "divn needs div r32"
+    r = gis.canon(ins, ops[0].reg)
+    seq = [i for i in dec.run(read_at, ins.address) if i.address <= ins.address]
+    if not seq or seq[0].address != read_at or seq[-1].address != ins.address:
+        return "cannot decode %X..%X" % (read_at, ins.address)
+    first = seq[0]
+    fo = first.operands
+    if first.mnemonic != "movzx" or fo[0].type != X.X86_OP_REG or \
+            gis.canon(first, fo[0].reg) != r or fo[1].type != X.X86_OP_MEM or \
+            fo[1].size != 1 or fo[1].mem.base != X.X86_REG_RIP or \
+            first.address + first.size + fo[1].mem.disp != FPS_BYTE:
+        return "%X is not movzx of the divisor from the fps byte" % read_at
+    halved = False
+    for i in seq[1:]:
+        if i.address in targets:
+            return "a branch target at %X inside the stretch" % i.address
+        if i is seq[-1]:
+            break
+        if i.mnemonic.startswith(("j", "call", "ret", "loop")):
+            return "control transfer at %X inside the stretch" % i.address
+        _rd, w = i.regs_access()
+        if r not in {gis.canon(i, x) for x in w}:
+            continue
+        if i.mnemonic == "shr" and not halved and i.operands[0].type == X.X86_OP_REG and \
+                i.operands[1].type == X.X86_OP_IMM and i.operands[1].imm == 1:
+            halved = True
+            continue
+        return "%X %s %s writes the divisor" % (i.address, i.mnemonic, i.op_str)
+    if not halved:
+        return "no shr r32, 1 between %X and the div" % read_at
+    why = rax_unread_from(dec, ins.address + ins.size)
+    return "the quotient: " + why if why else None
+
+
 def emit_mulstore(pool, ins, group):
     """push r64; imul r32, dword [N]; the store; pop r64: the wait stored
     times N, the register kept (the store has no rip operand: its bytes as
-    they are)"""
-    r = R32[ins.reg_name(ins.operands[1].reg)]
+    they are; a byte store stores the product's low byte)"""
+    name = ins.reg_name(ins.operands[1].reg)
+    r = R32[name] if name in R32 else R8[name]
     rex = b"\x41" if r >= 8 else b""
     pool.emit(rex + bytes([0x50 + (r & 7)]))                            # push r64
     pool.pool_rel32((b"\x44" if r >= 8 else b"") +
@@ -9607,9 +12684,11 @@ def prove_mulstore(dec, targets, ins, read_at):
     fps byte]`, `shr r32, 1` and instructions that neither write r32 nor
     leave the line, with no way into it after read_at"""
     ops = ins.operands
+    byte = len(ops) == 2 and ops[0].type == X.X86_OP_MEM and ops[0].size == 1 and \
+        ops[1].type == X.X86_OP_REG and ins.reg_name(ops[1].reg) in R8
     if ins.mnemonic != "mov" or len(ops) != 2 or ops[0].type != X.X86_OP_MEM or \
-            ops[0].size != 4 or ops[1].type != X.X86_OP_REG or ops[1].size != 4:
-        return "mulstore needs mov dword [B + d], r32"
+            ops[1].type != X.X86_OP_REG or not (byte or ops[0].size == 4 and ops[1].size == 4):
+        return "mulstore needs mov dword [B + d], r32 or mov byte [B + d], r8"
     m = ops[0].mem
     r = gis.canon(ins, ops[1].reg)
     if m.base in (0, X.X86_REG_RIP, X.X86_REG_RSP) or m.index or \
@@ -9634,14 +12713,20 @@ def prove_mulstore(dec, targets, ins, read_at):
         _rd, w = i.regs_access()
         if r not in {gis.canon(i, x) for x in w}:
             continue
-        if i.mnemonic == "shr" and not halved and i.operands[0].type == X.X86_OP_REG and \
+        if i.mnemonic == "shr" and not halved and not byte and \
+                i.operands[0].type == X.X86_OP_REG and \
                 i.operands[1].type == X.X86_OP_IMM and i.operands[1].imm == 1:
             halved = True
+            continue
+        if byte and not halved and i.mnemonic == "add" and len(i.operands) == 2 and \
+                i.operands[0].type == i.operands[1].type == X.X86_OP_REG and \
+                i.operands[0].reg == i.operands[1].reg == ops[1].reg:
+            halved = True       # a byte wait's doubling, at most once
             continue
         return "%X %s %s writes the stored register" % (i.address, i.mnemonic, i.op_str)
     if ins.address in targets:
         return "a branch target at the store %X" % ins.address
-    if not halved:
+    if not halved and not byte:
         return "no shr r32, 1 between %X and the store" % read_at
     return None
 
@@ -9853,6 +12938,103 @@ def prove_dstarg(dec, ins, call_at, iat):
     return "no constructor call within 16 instructions"
 
 
+def prove_limsq(dec, targets, ins, extra, bound=6000):
+    """`movss xmmN, [rip + K]`, a limit on a squared length: the constant is the
+    manifest's and positive; N is callee-saved (xmm6-15: the calls on the way
+    keep it); every path from the load reads it only at the manifest's
+    compares, comiss or ucomiss, before a full rewrite (a callee-saved register
+    can stay live to the epilogue's restore, so the bound is a whole large
+    function: 16C7E0's xmm13 needs over 2000); and the other side of
+    each compare is `movaps r, a; mulss r, a; movaps t, b; mulss t, b; addss
+    r, t` from the manifest's start, then a straight line to the compare that
+    nothing enters and nothing else writes r on."""
+    const_rva, want, compares = extra
+    compares = dict(compares)   # compare address: the sum's first instruction
+    ops = ins.operands
+    if ins.mnemonic != "movss" or len(ops) != 2 or ops[0].type != X.X86_OP_REG or \
+            ops[1].type != X.X86_OP_MEM or ops[1].mem.base != X.X86_REG_RIP or \
+            ops[1].mem.index:
+        return "limsq needs movss xmm, dword ptr [rip + K]"
+    reg = ins.reg_name(ops[0].reg)
+    if (gmt.xmm_index(reg) or 0) < 6:
+        return "limsq needs a callee-saved xmm6-15, not %s" % reg
+    if ins.address + ins.size + ops[1].mem.disp != const_rva:
+        return "reads %X, not %X" % (ins.address + ins.size + ops[1].mem.disp, const_rva)
+    value = struct.unpack_from("<f", dec.img, const_rva)[0]
+    if struct.pack("<f", value) != struct.pack("<f", want) or not value > 0:
+        return "constant is %r, not %r" % (value, want)
+    reached, work, seen = set(), [ins.address + ins.size], set()
+    while work:
+        at = work.pop()
+        if at in seen:
+            continue
+        seen.add(at)
+        if len(seen) > bound:
+            return "the paths from the load exceed the bound"
+        seq = dec.run(at, at)
+        if not seq or seq[0].address != at:
+            return "cannot decode %X" % at
+        i = seq[0]
+        if i.mnemonic in ("ret", "int3", "ud2"):
+            return "%s at %X before %s is rewritten" % (i.mnemonic, at, reg)
+        if gmt.full_write(i, reg):
+            continue
+        rd, wr = gmt.reads_writes(i)
+        if reg in rd:
+            if at not in compares or i.mnemonic not in ("comiss", "ucomiss"):
+                return "%s read at %X %s %s" % (reg, at, i.mnemonic, i.op_str)
+            reached.add(at)
+        elif reg in wr:
+            return "%s partly written at %X" % (reg, at)
+        if i.mnemonic == "jmp":
+            if not tr.is_rel_branch(i):
+                return "indirect jump at %X" % at
+            work.append(i.operands[0].imm)
+            continue
+        if i.mnemonic.startswith("j"):
+            if not tr.is_rel_branch(i):
+                return "indirect branch at %X" % at
+            work.append(i.operands[0].imm)
+        work.append(at + i.size)
+    if reached != set(compares):
+        return "no path reaches the compare at %s" % ", ".join(
+            "%X" % c for c in sorted(set(compares) - reached))
+    for cmp_at, sum_at in compares.items():
+        seq = [i for i in dec.run(sum_at, cmp_at) if i.address <= cmp_at]
+        if len(seq) < 6 or seq[-1].address != cmp_at:
+            return "%X to %X is not a straight line" % (sum_at, cmp_at)
+        c = seq[-1]
+        other = [c.reg_name(o.reg) for o in c.operands if o.type == X.X86_OP_REG and
+                 c.reg_name(o.reg) != reg]
+        if len(other) != 1:
+            return "the compare at %X has no register other than %s" % (cmp_at, reg)
+        r = other[0]
+        m1, s1, m2, s2, add = seq[:5]
+
+        def pair(mov, mul, dst):
+            mo, uo = mov.operands, mul.operands
+            return mov.mnemonic == "movaps" and mul.mnemonic == "mulss" and \
+                mo[0].type == uo[0].type == mo[1].type == uo[1].type == X.X86_OP_REG and \
+                mov.reg_name(mo[0].reg) == mul.reg_name(uo[0].reg) == dst and \
+                mov.reg_name(mo[1].reg) == mul.reg_name(uo[1].reg) != dst
+        t = m2.reg_name(m2.operands[0].reg) if m2.operands and \
+            m2.operands[0].type == X.X86_OP_REG else None
+        if not (pair(m1, s1, r) and t and t != r and pair(m2, s2, t) and
+                add.mnemonic == "addss" and add.op_str == "%s, %s" % (r, t)):
+            return "%X is not %s = a*a + b*b" % (sum_at, r)
+        # a conditional branch on the way leaves the line; only its fall-through
+        # goes on to the compare, and nothing else comes in
+        for k, i in enumerate(seq[1:], 1):
+            if i.address in targets:
+                return "%X enters the line from %X to %X" % (i.address, sum_at, cmp_at)
+            if i.mnemonic in ("jmp", "call", "ret") or \
+                    i.mnemonic.startswith("j") and not tr.is_rel_branch(i):
+                return "control transfer at %X" % i.address
+            if 5 <= k < len(seq) - 1 and r in gmt.reads_writes(i)[1]:
+                return "%s rewritten at %X before the compare" % (r, i.address)
+    return None
+
+
 def import_call(i, iat):
     """The import a `call qword ptr [rip + X]` calls, or None."""
     m = i.operands[0].mem if i.operands and i.operands[0].type == X.X86_OP_MEM else None
@@ -10058,14 +13240,16 @@ def emit_scaledadd(pool, group, tail=False):
 
 
 def emit_immstore(pool, ins, temp, group):
-    """Replace an unprefixed `mov m32, imm32` whose immediate is float K
-    with `m32 = K*s`. K lives in the stub so this kind needs no mutable
-    literal slot. The proof has established that temp is dead, that the
-    destination is not RIP-relative, and that the original encoding is the
-    unprefixed C7 /0 form; the copied ModRM/SIB/displacement therefore names
-    the same address from the stub."""
+    """Replace a `mov m32, imm32` whose immediate is float K with
+    `m32 = K*s`. K lives in the stub so this kind needs no mutable literal
+    slot. The proof has established that temp is dead, that the destination
+    is not RIP-relative, and that the original encoding is C7 /0, unprefixed
+    or with REX.B alone (a base of r8..r15); the copied ModRM/SIB/displacement,
+    with that B bit merged into the store's REX, therefore names the same
+    address from the stub."""
     raw = bytes(ins.bytes)
     t = gmt.xmm_index(temp)
+    rex_b = raw[0] & 1 if 0x40 <= raw[0] <= 0x4F else 0
     pool.emit(b"\xEB\x04")                                      # jump over embedded K
     k = pool.here()
     pool.emit(raw[ins.imm_offset:ins.imm_offset + 4])
@@ -10073,7 +13257,7 @@ def emit_immstore(pool, ins, temp, group):
                     bytes([0x0F, 0x10, ((t & 7) << 3) | 5]), k)  # movss xmmT, [K]
     emit_mulss_scale(pool, temp, group)
     modrm = raw[ins.modrm_offset]
-    store = (b"\xF3" + rex_for(t) + bytes([0x0F, 0x11,
+    store = (b"\xF3" + rex_for(t, 8 if rex_b else 0) + bytes([0x0F, 0x11,
              (modrm & 0xC7) | ((t & 7) << 3)]) +
              raw[ins.modrm_offset + 1:ins.imm_offset])
     pool.emit(store)                                              # movss original m32, xmmT
@@ -10140,7 +13324,8 @@ NOT_YET_TAKEN = {"jle": False, "jg": True, "jl": False, "jge": True, "je": False
 
 def prove_notyet(dec, ins, notyet_at, negative=False, below=False):
     """None if `ins` is `test r, r` (or `test r, imm` / `test m, imm`: a
-    counter's low bits, an every-8th-tick test; `and r, imm`, whose register
+    counter's low bits, an every-8th-tick test; `test m, r`: a draw against
+    a mask in memory, ut1d's chances; `and r, imm`, whose register
     result must be preserved on skipped ticks; or `cmp`, a counter's
     equality or signed limit used by an event) whose
     flags have exactly one reader, the next conditional branch (allowing
@@ -10152,27 +13337,49 @@ def prove_notyet(dec, ins, notyet_at, negative=False, below=False):
         ops[1].type == X.X86_OP_REG and ops[0].reg == ops[1].reg
     bits = len(ops) == 2 and ops[0].type in (X.X86_OP_REG, X.X86_OP_MEM) and \
         ops[1].type == X.X86_OP_IMM
+    mem_reg = len(ops) == 2 and ops[0].type == X.X86_OP_MEM and \
+        ops[1].type == X.X86_OP_REG
     and_reg = ins.mnemonic == "and" and len(ops) == 2 and \
         ops[0].type == X.X86_OP_REG and ops[1].type == X.X86_OP_IMM
-    if not (ins.mnemonic == "test" and (same_reg or bits)) and \
-            ins.mnemonic != "cmp" and not and_reg:
-        return "notyet needs test r, r, test r/m, imm, and r, imm or cmp"
+    # a countdown's own decrement (its register kept on a held tick)
+    step_reg = not below and not negative and len(ops) >= 1 and \
+        ops[0].type == X.X86_OP_REG and \
+        (ins.mnemonic == "dec" and len(ops) == 1 or
+         ins.mnemonic in ("sub", "add") and len(ops) == 2 and ops[1].type == X.X86_OP_IMM)
+    if not (ins.mnemonic == "test" and (same_reg or bits or mem_reg)) and \
+            ins.mnemonic != "cmp" and not and_reg and not step_reg and \
+            not (below and ins.mnemonic in ("comiss", "ucomiss")):
+        return "notyet needs test r, r, test r/m, imm, test m, r, and r, imm, cmp or a decrement"
     at = ins.address + ins.size
-    for _ in range(3):
+    for _ in range(3 if not step_reg else 4):
+        if step_reg:
+            # a store of the decremented register (a count row's site) leaves
+            # the flags as they are
+            seq = dec.run(at, at)
+            if seq and seq[0].address == at and seq[0].mnemonic == "mov" and \
+                    seq[0].operands[0].type == X.X86_OP_MEM:
+                at += seq[0].size
+                continue
         seq = dec.run(at, at)
         if not seq or seq[0].address != at:
             return "cannot decode the branch after the test"
         br = seq[0]
         ops = br.operands
+        if below and br.mnemonic == "jmp" and tr.is_rel_branch(br):
+            # flags pass an unconditional jump unchanged: em65's 2C15FC
+            # `comiss; jmp 2C183C`, whose jbe the next compare shares
+            at = ops[0].imm
+            continue
         if br.mnemonic != "mov" or len(ops) != 2 or \
                 ops[0].type != X.X86_OP_REG or br.reg_name(ops[0].reg) == "rsp" or \
                 ops[1].type not in (X.X86_OP_IMM, X.X86_OP_REG, X.X86_OP_MEM):
             break
         at += br.size
     if below:
-        if ins.mnemonic != "cmp" or br.mnemonic not in ("jb", "jbe", "jae", "ja") or \
+        if ins.mnemonic not in ("cmp", "comiss", "ucomiss") or \
+                br.mnemonic not in ("jb", "jbe", "jae", "ja") or \
                 not tr.is_rel_branch(br):
-            return "notyetb needs cmp read by JB, JBE, JAE or JA, not %s %s" % (
+            return "notyetb needs cmp/comiss/ucomiss read by JB, JBE, JAE or JA, not %s %s" % (
                 ins.mnemonic, br.mnemonic)
         # CF = 1, ZF = 0: JB/JBE jump, JAE/JA fall through
         goes = br.operands[0].imm if br.mnemonic in ("jb", "jbe") else at + br.size
@@ -10202,6 +13409,275 @@ def prove_notyet(dec, ins, notyet_at, negative=False, below=False):
         if why:
             return "after the branch: " + why
     return None
+
+
+def prove_timer_paced(dec, insns, idx, dec_at, timer_ranges):
+    """None if dec_at lies in a timer family's patched range (`timer_ranges`:
+    (lo, hi, label)) and that range stores to the displacement the test at
+    `ins` reads: its own memory operand, or the load of its register on the
+    straight line before it (at most four instructions back in insns)"""
+    ins = insns[idx]
+    rng = next(((lo, hi, label) for lo, hi, label in timer_ranges if lo <= dec_at < hi), None)
+    if rng is None:
+        return "%X is no timer family's site" % dec_at
+    lo, hi, label = rng
+    stores = set()
+    for i in dec.run(lo, hi - 1):
+        if i.address >= hi:
+            break
+        for op in i.operands:
+            if op.type == X.X86_OP_MEM and op.access & 2:      # CS_AC_WRITE
+                stores.add(op.mem.disp)
+    mem = next((op for op in ins.operands if op.type == X.X86_OP_MEM), None)
+    if mem is not None:
+        disp = mem.mem.disp
+    else:
+        reg = gis.canon(ins, ins.operands[0].reg)
+        disp = None
+        for i in reversed(insns[max(idx - 4, 0):idx]):
+            if reg in gis.reg_writes(i):
+                m = next((op for op in i.operands if op.type == X.X86_OP_MEM), None)
+                if i.mnemonic in ("mov", "movzx", "movsx") and m is not None:
+                    disp = m.mem.disp
+                break
+        if disp is None:
+            return "the tested register's load is not on the straight line before it"
+    if disp not in stores:
+        return "the timer site %X (%s) stores no +%X" % (lo, label, disp)
+    return None
+
+
+def flag_branch(dec, ins):
+    """(the conditional branch reading `ins`'s flags, None) or (None, why):
+    the next instruction, past flag-neutral register moves, must be a
+    relative jcc; the flags must be dead after it on both of its paths"""
+    at = ins.address + ins.size
+    for _ in range(3):
+        seq = dec.run(at, at)
+        if not seq or seq[0].address != at:
+            return None, "cannot decode the branch after the test"
+        br = seq[0]
+        ops = br.operands
+        if br.mnemonic != "mov" or len(ops) != 2 or \
+                ops[0].type != X.X86_OP_REG or br.reg_name(ops[0].reg) == "rsp" or \
+                ops[1].type not in (X.X86_OP_IMM, X.X86_OP_REG, X.X86_OP_MEM):
+            break
+        at += br.size
+    if not br.mnemonic.startswith("j") or br.mnemonic == "jmp" or not tr.is_rel_branch(br):
+        return None, "the test's next flag reader is %s, not a conditional branch" % br.mnemonic
+    for nxt in (br.operands[0].imm, at + br.size):
+        why = flags_dead_after(dec, nxt)
+        if why:
+            return None, "after the branch: " + why
+    return br, None
+
+
+RNG_CALLS = (0x1BD480, 0x1BD580, 0x1BD590, 0x1BD620, 0x1BD6D0)   # the random generators
+
+
+def is_advance_call(i):
+    return i.mnemonic == "call" and i.operands[0].type == X.X86_OP_IMM and \
+        i.operands[0].imm in MOTION_ADVANCES
+
+
+def prove_notyetend(dec, insns, idx, entries, notyet_at):
+    """(object register, ended, None) or (None, None, why).
+
+    The gated test is either the advance's answer itself (ended: `test al,
+    al` straight after a call of a MOTION_ADVANCES function; held, it reads
+    al = 0, ZF = 1: its one flag reader the next je/jne, which with ZF = 1
+    goes to notyet_at), or a test in the straight-line code of the ended side
+    (`test al, al; je` after the call, then nothing but calls of the random
+    generators): held, it reads notyet's "not yet" (prove_notyet). The call's
+    rcx is a callee-saved register R set by `mov rcx, R` in the straight
+    line before it, rcx and R written nowhere from there to the call, R
+    nowhere from there to the test; no way into that code but the fall-through
+    (entries: direct branch and call targets, code pointers, switch cases).
+    The advance answers for R's motion, [R + F38]; the generators leave it."""
+    ins = insns[idx]
+    ended = ins.mnemonic == "test" and ins.op_str == "al, al" and idx > 0 and \
+        is_advance_call(insns[idx - 1]) and \
+        insns[idx - 1].address + insns[idx - 1].size == ins.address
+    if ended:
+        call_k = idx - 1
+        if ins.address in entries:
+            return None, None, "a way into the test other than the call's return"
+    else:
+        if ins.mnemonic == "test" and ins.op_str == "al, al":
+            return None, None, "a test al, al that is not the advance's own answer"
+        call_k = None
+        for k in range(idx - 1, max(idx - 13, 1), -1):
+            i = insns[k]
+            if insns[k + 1].address in entries:
+                return None, None, "a way into the ended side at %X" % insns[k + 1].address
+            if i.mnemonic == "je" and insns[k - 1].mnemonic == "test" and \
+                    insns[k - 1].op_str == "al, al" and k >= 2 and is_advance_call(insns[k - 2]):
+                if insns[k - 1].address in entries:
+                    return None, None, "a way into the advance's test"
+                call_k = k - 2
+                break
+            if i.mnemonic == "call" and i.operands[0].type == X.X86_OP_IMM and \
+                    i.operands[0].imm in RNG_CALLS:
+                continue
+            if i.mnemonic.startswith("j") or i.mnemonic in ("call", "ret"):
+                return None, None, "%X %s between the ended side's start and the test" % (
+                    i.address, i.mnemonic)
+        if call_k is None:
+            return None, None, "no motion advance's `test al, al; je` within 12 instructions"
+    start = None
+    for j in range(call_k - 1, max(call_k - 13, -1), -1):
+        i = insns[j]
+        if insns[j + 1].address in entries:
+            return None, None, "a way into the straight line before the call at %X" % \
+                insns[j + 1].address
+        ops = i.operands
+        if i.mnemonic == "mov" and len(ops) == 2 and ops[0].type == X.X86_OP_REG and \
+                i.reg_name(ops[0].reg) == "rcx" and ops[1].type == X.X86_OP_REG:
+            start = j
+            break
+        if i.mnemonic.startswith("j") or i.mnemonic in ("call", "ret") or \
+                "rcx" in gis.reg_writes(i):
+            return None, None, "no `mov rcx, R` in the straight line before the call"
+    if start is None:
+        return None, None, "no `mov rcx, R` within 12 instructions of the call"
+    obj = insns[start].reg_name(insns[start].operands[1].reg)
+    if obj not in NONVOLATILE:
+        return None, None, "rcx is %s, not a callee-saved register" % obj
+    for i in insns[start + 1:call_k]:
+        if {"rcx", obj} & gis.reg_writes(i):
+            return None, None, "%X writes rcx or %s before the call" % (i.address, obj)
+    for i in insns[call_k + 1:idx]:
+        if obj in gis.reg_writes(i):
+            return None, None, "%X writes %s after the call" % (i.address, obj)
+    if not ended:
+        why = prove_notyet(dec, ins, notyet_at)
+        return (None, None, why) if why else (obj, False, None)
+    br, why = flag_branch(dec, ins)
+    if why:
+        return None, None, why
+    if br.mnemonic not in ("je", "jne"):
+        return None, None, "the ended answer's branch is %s, not je/jne" % br.mnemonic
+    goes = br.operands[0].imm if br.mnemonic == "je" else br.address + br.size
+    if goes != notyet_at:
+        return None, None, "with ZF = 1, %X %s goes to %X, not %X" % (
+            br.address, br.mnemonic, goes, notyet_at)
+    return obj, True, None
+
+
+def rax_unread_from(dec, at, bound=48):
+    """None if every path from `at` rewrites rax (or calls, or returns, as
+    gen_menu_transitions.rax_unused_after_calls counts it) before reading it"""
+    rax = {"rax", "eax", "ax", "al", "ah"}
+    todo, seen = [at], set()
+    while todo:
+        a = todo.pop()
+        if a in seen:
+            continue
+        seen.add(a)
+        if len(seen) > bound:
+            return "rax liveness from %X exceeds the bound" % at
+        i = dec.run(a, a)[0]
+        rd, wr = gmt.reads_writes(i)
+        if i.mnemonic == "nop":
+            rd = set()
+        if rd & rax:
+            return "rax read at %X" % a
+        if wr & rax or i.mnemonic in ("call", "ret"):
+            continue
+        if i.mnemonic.startswith("j"):
+            if not tr.is_rel_branch(i):
+                return "an indirect branch at %X before rax is rewritten" % a
+            todo += [i.operands[0].imm] + ([] if i.mnemonic == "jmp" else [a + i.size])
+            continue
+        todo.append(a + i.size)
+    return None
+
+
+def prove_callend(dec, insns, idx, entries, notyet_at):
+    """(object register, None) or (None, why): `insns[idx]`, a call of an
+    integer random generator, lies in the straight line of a motion advance's
+    ended side (prove_notyetend's draw case: `mov rcx, R; call advance; test
+    al, al; je`, then only the generators' calls, no way in, R unwritten);
+    its result's first reader is `test al, imm` (imm nonzero) whose one flag
+    reader jne goes to notyet_at when al & imm != 0 (eax = -1 always does);
+    rax is unread from notyet_at until rewritten or returned"""
+    call = insns[idx]
+    if call.mnemonic != "call" or call.operands[0].type != X.X86_OP_IMM or \
+            call.operands[0].imm not in (0x1BD480, 0x1BD6D0):
+        return None, "callend needs a call of 1BD480 or 1BD6D0"
+    nxt = insns[idx + 1] if idx + 1 < len(insns) else dec.run(call.address + 5,
+                                                              call.address + 5)[0]
+    ops = nxt.operands
+    if nxt.mnemonic != "test" or len(ops) != 2 or ops[0].type != X.X86_OP_REG or \
+            nxt.reg_name(ops[0].reg) != "al" or ops[1].type != X.X86_OP_IMM or \
+            not ops[1].imm & 0xFF:
+        return None, "the draw's first reader is %s %s, not test al, imm" % (nxt.mnemonic,
+                                                                            nxt.op_str)
+    br, why = flag_branch(dec, nxt)
+    if why:
+        return None, why
+    if br.mnemonic != "jne" or br.operands[0].imm != notyet_at:
+        return None, "with al = 0xFF, %X %s does not go to %X" % (br.address, br.mnemonic,
+                                                                 notyet_at)
+    why = rax_unread_from(dec, notyet_at)
+    if why:
+        return None, "on the not-yet path: " + why
+    # the ended side's straight line: the motion advance, its object register
+    call_k = None
+    for k in range(idx - 1, max(idx - 13, 1), -1):
+        i = insns[k]
+        if insns[k + 1].address in entries:
+            return None, "a way into the ended side at %X" % insns[k + 1].address
+        if i.mnemonic == "je" and insns[k - 1].mnemonic == "test" and \
+                insns[k - 1].op_str == "al, al" and k >= 2 and is_advance_call(insns[k - 2]):
+            if insns[k - 1].address in entries:
+                return None, "a way into the advance's test"
+            call_k = k - 2
+            break
+        if i.mnemonic == "call" and i.operands[0].type == X.X86_OP_IMM and \
+                i.operands[0].imm in RNG_CALLS:
+            continue
+        if i.mnemonic.startswith("j") or i.mnemonic in ("call", "ret"):
+            return None, "%X %s between the ended side's start and the draw" % (i.address,
+                                                                               i.mnemonic)
+    if call_k is None:
+        return None, "no motion advance's `test al, al; je` within 12 instructions"
+    start = None
+    for j in range(call_k - 1, max(call_k - 13, -1), -1):
+        i = insns[j]
+        if insns[j + 1].address in entries:
+            return None, "a way into the straight line before the advance at %X" % \
+                insns[j + 1].address
+        o = i.operands
+        if i.mnemonic == "mov" and len(o) == 2 and o[0].type == X.X86_OP_REG and \
+                i.reg_name(o[0].reg) == "rcx" and o[1].type == X.X86_OP_REG:
+            start = j
+            break
+        if i.mnemonic.startswith("j") or i.mnemonic in ("call", "ret") or \
+                "rcx" in gis.reg_writes(i):
+            return None, "no `mov rcx, R` in the straight line before the advance"
+    if start is None:
+        return None, "no `mov rcx, R` within 12 instructions of the advance"
+    obj = insns[start].reg_name(insns[start].operands[1].reg)
+    if obj not in NONVOLATILE:
+        return None, "rcx is %s, not a callee-saved register" % obj
+    for i in insns[start + 1:call_k]:
+        if {"rcx", obj} & gis.reg_writes(i):
+            return None, "%X writes rcx or %s before the advance" % (i.address, obj)
+    for i in insns[call_k + 1:idx]:
+        if obj in gis.reg_writes(i):
+            return None, "%X writes %s after the advance" % (i.address, obj)
+    return obj, None
+
+
+def prove_hold(dec, ins):
+    """None if `ins` is a compare (cmp, test, comiss, ucomiss: it writes every
+    flag a jcc reads and nothing else) whose flags' one reader is the next
+    conditional branch, dead after it on both paths, or why not"""
+    if ins.mnemonic not in ("cmp", "test", "comiss", "ucomiss"):
+        return "hold needs cmp, test, comiss or ucomiss"
+    _br, why = flag_branch(dec, ins)
+    return why
 
 
 def unwind_record_bytes(img, secs):
@@ -10559,6 +14035,7 @@ def main():
     iat = iat_names()
     begin_set = set(begins)
     protected = [r for r in gis.patched_ranges() if "world_anims" not in r[2]]
+    timer_ranges = [r for r in protected if r[2] in TIMER_FAMILIES]
     import check_patch_sites as cps
     for a, raw, label in cps.turn_callers():
         protected.append((a, a + len(raw), label))
@@ -10617,15 +14094,34 @@ def main():
                 if why:
                     row["proof"] = why
                     continue
+            elif kind == "callvec":
+                if target not in VEC_MOVERS or reg != "rdx":
+                    row["proof"] = "callvec copies the vector a mover takes in rdx, not %X's %s" \
+                        % (target, reg)
+                    continue
+            elif kind == "callend":
+                # reg is the not-yet path: the end block's return
+                insns, idx = dec.around(rva, fn, rva) if fn is not None else (None, None)
+                if insns is None:
+                    row["proof"] = "not a decoded instruction"
+                    continue
+                objreg, why = prove_callend(dec, insns, idx, set(sources) | indirect, reg)
+                if why:
+                    row["proof"] = why
+                    continue
             elif reg not in ("xmm1", "xmm2", "xmm3"):
                 row["proof"] = "scales %s, not a float argument register" % reg
                 continue
             # a tail jump (E9) is retargeted the same way: the stub ends in a
             # jump to the target, and the stack holds what the jmp left there
             calls.append(dict(site=rva, kind=kind, group=group, target=target, reg=reg,
-                              row=row, probe=None, counter=None, op=raw[0]))
+                              row=row, probe=None, counter=None, op=raw[0],
+                              objreg=objreg if kind == "callend" else None))
             row.update(status="selected", proof="%s %X; rel32 retargeted (5 bytes, no window)"
-                       % ("call" if raw[0] == 0xE8 else "tail jmp", target))
+                       % ("call" if raw[0] == 0xE8 else "tail jmp", target) +
+                       ("; on the ended side of %s's motion advance; held, a motion that "
+                        "does not loop draws nothing, eax = -1: its test goes to %X; rax "
+                        "unread there" % (objreg, reg) if kind == "callend" else ""))
             continue
         fn = rva if kind in ("gatefn", "gate0") else gmt.containing_function(begins, rva)
         row["function"] = "%X" % fn if fn is not None else ""
@@ -10778,7 +14274,8 @@ def main():
                 "a move by the speed" if kind == "step" else "a velocity's change" if
                 kind[0] == "z" else "a velocity's factor" if kind[0] == "u" else
                 "a velocity lane's factor")
-        elif kind in ("zfirst", "ufirst") and isinstance(extra, tuple) and extra[0] == "scale":
+        elif kind in ("zfirst", "ufirst", "zlast", "ulast") and isinstance(extra, tuple) and \
+                extra[0] == "scale":
             why = prove_scale_arg(dec, ins, extra[1], iat)
             if why:
                 row["proof"] = why
@@ -10806,7 +14303,7 @@ def main():
         elif kind == "dst" and isinstance(extra, tuple) and extra[0] == "scale":
             # the step is the float factor of a vector product that moves
             # something (the manifest says what); scaled right after its load
-            why = prove_scale_arg(dec, ins, extra[1], iat, (CVEC_SCALE, CVEC_TIMES))
+            why = prove_scale_arg(dec, ins, extra[1], iat, (CVEC_SCALE, CVEC_TIMES, CVEC_SCALE4))
             if why:
                 row["proof"] = why
                 continue
@@ -10866,8 +14363,11 @@ def main():
                     ins.imm_offset + 4 != ins.size:
                 row["proof"] = "immstore needs mov m32, imm32"
                 continue
-            if ins.modrm_offset != 1 or raw[0] != 0xC7 or raw[1] & 0x38:
-                row["proof"] = "immstore needs the unprefixed C7 /0 encoding"
+            rex = raw[0] if 0x40 <= raw[0] <= 0x4F else None
+            op_at = 0 if rex is None else 1
+            if (rex is not None and rex & 0x0E) or ins.modrm_offset != op_at + 1 or \
+                    raw[op_at] != 0xC7 or raw[op_at + 1] & 0x38:
+                row["proof"] = "immstore needs C7 /0, unprefixed or with REX.B alone"
                 continue
             if ops[0].mem.base in (0, X.X86_REG_RIP) or ops[0].mem.index:
                 row["proof"] = "immstore needs one non-RIP base register and no index"
@@ -10925,6 +14425,13 @@ def main():
                 row["proof"] = why
                 continue
             row["proof"] = "untouched until cVec(x, y, z, w) at %X" % extra
+        elif kind == "limsq":
+            why = prove_limsq(dec, strict_targets, ins, extra)
+            if why:
+                row["proof"] = why
+                continue
+            row["proof"] = "K = %g at %X, x s^2; read only by %s, each against a sum of " \
+                "two squares" % (extra[1], extra[0], ", ".join("%X" % c for c, _s in extra[2]))
         elif kind == "floor1":
             base, disp, block_lo = extra
             why = prove_join(dec, starts, sources, indirect, rva, block_lo)
@@ -10943,6 +14450,16 @@ def main():
             row["temp"] = info["temp"]
             row["proof"] = "a join of the reload block (%X on); flags and %s dead" % (
                 block_lo, info["temp"])
+        elif kind == "countlast" and ins.mnemonic == "mov" and len(ins.operands) == 2 and \
+                ins.operands[0].type == X.X86_OP_MEM and ins.operands[1].type == X.X86_OP_REG:
+            # an integer counter's store where a reload and a countdown meet
+            # (4ABE10's +E3C): the field keeps its value except on the last tick
+            flags, why = gis.flag_policy(dec, ins, 0)
+            if flags is None:
+                row["proof"] = why
+                continue
+            row["proof"] = "a counter's store: skipped except on the last tick, the field " \
+                "kept; " + why
         elif kind == "countlast":
             if ins.operands[0].type != X.X86_OP_REG or not (
                     ins.mnemonic in ("mulss", "divss") or
@@ -10985,13 +14502,42 @@ def main():
             if why:
                 row["proof"] = why
                 continue
-            if ins.mnemonic == "and":
+            if ins.mnemonic in ("and", "sub", "add", "dec"):
                 # The instruction also writes its register. Keep that value
                 # on a held tick, changing only the following branch's flags.
                 info["skip"] = bytes(ins.bytes)
             row["proof"] = ("its flags' one branch goes to %X with ZF=OF=0, SF=%d" % (
                 extra, int(kind == "notyetneg"))) if kind != "notyetb" else \
                 "its flags' one branch goes to %X with ZF=0, CF=1" % extra
+        elif kind == "notyett":
+            notyet_at, dec_at = extra
+            why = prove_notyet(dec, ins, notyet_at)
+            if not why:
+                why = prove_timer_paced(dec, insns, idx, dec_at, timer_ranges)
+            if why:
+                row["proof"] = why
+                continue
+            if ins.mnemonic in ("and", "sub", "add", "dec"):
+                info["skip"] = bytes(ins.bytes)
+            row["proof"] = ("its flags' one branch goes to %X with ZF=OF=SF=0; the field's "
+                            "decrement %X is a timer family's, whose mask it takes" % (
+                                notyet_at, dec_at))
+        elif kind == "notyetend":
+            objreg, ended, why = prove_notyetend(dec, insns, idx, set(sources) | indirect, extra)
+            if why:
+                row["proof"] = why
+                continue
+            info.update(objreg=objreg, ended=ended)
+            row["proof"] = ("the ended answer for %s's motion [%s + F38]; held, a motion that "
+                            "does not loop reads %s: its one branch goes to %X; flags dead "
+                            "after" % (objreg, objreg, "al = 0 (ZF = 1)" if ended else
+                                       "not yet (ZF = SF = OF = 0)", extra))
+        elif kind == "hold":
+            why = prove_hold(dec, ins)
+            if why:
+                row["proof"] = why
+                continue
+            row["proof"] = "a compare read by the next branch alone; flags dead after it"
         elif kind == "smode":
             mem = next((op.mem for op in ins.operands if op.type == X.X86_OP_MEM), None)
             if ins.mnemonic != "sub" or ins.operands[0].type != X.X86_OP_REG or \
@@ -11011,8 +14557,36 @@ def main():
             if why:
                 row["proof"] = why
                 continue
-            row["proof"] = "stores the fps byte read at %X, halved: the value times N, the " \
-                "register kept; flags dead after" % extra
+            row["proof"] = "stores the fps byte read at %X, %s: the value times N, the " \
+                "register kept; flags dead after" % (
+                    extra, "halved" if ins.operands[0].size == 4 else "a byte wait")
+        elif kind == "divn":
+            why = prove_divn(dec, strict_targets, ins, extra)
+            if why:
+                row["proof"] = why
+                continue
+            row["proof"] = "divides by the fps byte read at %X, halved: by it times N, the " \
+                "divisor register kept; the quotient unread after" % extra
+        elif kind == "stockfps":
+            why = prove_stockfps(dec, strict_targets, ins, extra, group)
+            if why:
+                row["proof"] = why
+                continue
+            if isinstance(extra, tuple):
+                info["quakefps"] = True
+                row["proof"] = "floor(fps/30)*15 stored at %X to B663D8: fps=30/60 from " \
+                    "the camera gate's stock context; original byte when mask=0; flags kept" % extra[2]
+            else:
+                row["proof"] = "fps divisor for div at %X: 30 while this group's element+40 " \
+                    "counter at 23D789 is stock-paced; original byte when mask=0; flags kept" % extra
+        elif kind == "stockpair":
+            why = prove_stockpair(dec, strict_targets, ins, extra, group)
+            if why:
+                row["proof"] = why
+                continue
+            row["proof"] = "7A81E8[(mode-1)] feeds only B663D0 at %X: immutable shipped " \
+                "pair selected by live shadow mode while camera gate is on; original " \
+                "table load when mask=0 or live mode unknown; flags kept" % extra[1]
         elif kind == "mulflag":
             why = prove_mulflag(dec, strict_targets, ins, extra)
             if not why:
@@ -11243,6 +14817,10 @@ def main():
             windows.append(dict(lo=d["lo"], hi=d["hi"], run=d["run"], sites=[d], block=d.get("block")))
     counters = [d for w in windows for d in w["sites"] if d["kind"] in COUNTED] + \
         [d for d in calls if d["kind"] in COUNTED]
+    # a hold's saved flags take the slot after its counter's: the holds last,
+    # so the other counters keep their numbers
+    holds = [d for d in counters if d["kind"] == "hold"]
+    counters = [d for d in counters if d["kind"] != "hold"] + holds
     sites_all = [d for w in windows for d in w["sites"]] + calls
     # literals of one constant, kind and group hold the same value at every N
     # (the runtime and the verifier fill each from its constant): one slot
@@ -11250,11 +14828,18 @@ def main():
     for l in literals:
         slot_of.setdefault((l["const"], l["kind"], l["group"]),
                            LITERAL_OFFSET + 4 * len(slot_of))
-    if len(counters) > MAX_COUNTERS or len(slot_of) > MAX_LITERALS or \
-            len(sites_all) > MAX_PROBES:
+    # callvec's copies take 16-byte slots after the counted sites' (the runtime
+    # reads a slot only for a counted kind)
+    vec_calls = [d for d in calls if d["kind"] == "callvec"]
+    if len(counters) + len(holds) + len(vec_calls) > MAX_COUNTERS or \
+            len(slot_of) > MAX_LITERALS or len(sites_all) > MAX_PROBES:
         raise RuntimeError("pool layout overflow")
-    for n, d in enumerate(counters):
-        d["counter"] = n
+    used = 0
+    for d in counters:
+        d["counter"] = used
+        used += 2 if d["kind"] == "hold" else 1
+    for n, d in enumerate(vec_calls):
+        d["counter"] = used + n
     for n, d in enumerate(sorted(sites_all, key=lambda d: d["site"])):
         d["probe"] = n
 
@@ -11289,6 +14874,10 @@ def main():
                 emit_fn_gate(pool, d["counter"], d["group"], ret0=d["kind"] == "gate0")
                 emit_probe(pool, d["probe"])
                 tr.emit_relocated(pool, i, None)
+            elif d["kind"] == "notyett":
+                emit_probe(pool, d["probe"])
+                emit_count_gate(pool, i, d["skip"], d["flags"], d["counter"], d["group"],
+                                mask=group_timer_mask(d["group"]), flag_bytes=NOT_YET_FLAGS)
             elif d["kind"] in ("count", "countlast", "count2", "notyet", "notyetneg", "notyetb",
                                "smode"):
                 emit_probe(pool, d["probe"])
@@ -11301,6 +14890,14 @@ def main():
                                 flag_bytes=NOT_YET_FLAGS if d["kind"] == "notyet" else
                                 NOT_YET_NEG_FLAGS if d["kind"] == "notyetneg" else
                                 NOT_YET_BELOW_FLAGS if d["kind"] == "notyetb" else None)
+            elif d["kind"] == "notyetend":
+                emit_probe(pool, d["probe"])
+                emit_motion_gate(pool, i, d["counter"], d["group"], d["objreg"],
+                                 struct.unpack_from("<I", img, MOTION_MAGIC_RVA)[0],
+                                 NOT_ENDED_FLAGS if d["ended"] else NOT_YET_FLAGS)
+            elif d["kind"] == "hold":
+                emit_probe(pool, d["probe"])
+                emit_hold_gate(pool, i, d["counter"], d["group"])
             elif d["kind"] == "imuln":
                 emit_probe(pool, d["probe"])
                 emit_imuln(pool, i, d["group"])
@@ -11310,6 +14907,15 @@ def main():
             elif d["kind"] == "mulstore":
                 emit_probe(pool, d["probe"])
                 emit_mulstore(pool, i, d["group"])
+            elif d["kind"] == "divn":
+                emit_probe(pool, d["probe"])
+                emit_divn(pool, i, d["group"])
+            elif d["kind"] == "stockfps":
+                emit_probe(pool, d["probe"])
+                emit_stockfps(pool, i, d["group"], d.get("quakefps", False))
+            elif d["kind"] == "stockpair":
+                emit_probe(pool, d["probe"])
+                emit_stockpair(pool, i, d["group"])
             else:
                 emit_probe(pool, d["probe"])
                 if d["kind"] == "src":
@@ -11346,6 +14952,10 @@ def main():
                 elif d["kind"] in ("dstarg", "argscale"):
                     tr.emit_relocated(pool, i, None)
                     emit_mulss_scale(pool, i.reg_name(i.operands[0].reg), d["group"])
+                elif d["kind"] == "limsq":
+                    tr.emit_relocated(pool, i, None)
+                    emit_mulss_scale(pool, i.reg_name(i.operands[0].reg), d["group"])
+                    emit_mulss_scale(pool, i.reg_name(i.operands[0].reg), d["group"])
             if i.mnemonic in tr.UNCOND and not w.get("block"):
                 dead = True
         for field, target in block_branches:
@@ -11356,7 +14966,9 @@ def main():
         win_rows.append((w["lo"], stub, orig_off, w["hi"] - w["lo"]))
         for d in w["sites"]:
             d["row"].update(window="%X" % w["lo"], stub="%X" % stub, probe="%d" % d["probe"])
-            temp = gmt.xmm_index(d["temp"]) if d["temp"] else 0xFF
+            # notyetend: temp is the object register's number (tr.GPR)
+            temp = gmt.xmm_index(d["temp"]) if d["temp"] else \
+                tr.GPR[d["objreg"]] if d["kind"] == "notyetend" else 0xFF
             site_rows.append((d["site"], KIND[d["kind"]], GROUPS.index(d["group"]), wi, temp,
                               0xFFFF if d["counter"] is None else d["counter"], d["probe"],
                               HEADLINE.get(d["site"], 0 if d["group"] == "actor" else 2)))
@@ -11369,6 +14981,13 @@ def main():
         if d["kind"] == "callgate":
             emit_fn_gate(pool, d["counter"], d["group"], ret0=True)
             emit_probe(pool, d["probe"])
+        elif d["kind"] == "callvec":
+            emit_probe(pool, d["probe"])
+            emit_vec_scale(pool, COUNTER_OFFSET + SLOT * d["counter"], d["group"])
+        elif d["kind"] == "callend":
+            emit_probe(pool, d["probe"])
+            emit_end_call(pool, d["counter"], d["group"], d["objreg"],
+                          struct.unpack_from("<I", img, MOTION_MAGIC_RVA)[0])
         else:
             emit_probe(pool, d["probe"])
             emit_mulss_scale(pool, d["reg"], d["group"])
@@ -11377,7 +14996,8 @@ def main():
         pool.game_rel32(b"\xE9", d["target"])
         call_rows.append((d["site"], stub, d["target"]))
         d["row"].update(window="call %d" % ci, stub="%X" % stub, probe="%d" % d["probe"])
-        site_rows.append((d["site"], KIND[d["kind"]], GROUPS.index(d["group"]), ci, 0xFF,
+        site_rows.append((d["site"], KIND[d["kind"]], GROUPS.index(d["group"]), ci,
+                          tr.GPR[d["objreg"]] if d["kind"] == "callend" else 0xFF,
                           0xFFFF if d["counter"] is None else d["counter"], d["probe"], 0))
         while pool.here() % 16:
             pool.emit(b"\xCC")
@@ -11400,10 +15020,13 @@ def main():
              '#define WORLD_ANIMS_MAIN_SHA1 "%s"' % sha,
              "static const uint32_t kWorldFrameCounterRva = 0x%X;" % tr.FRAME_COUNTER,
              "static const uint32_t kWorldGroupStride = %d;  // group g: uint8 mask at [g*8], "
-             "mask << 1 at [g*8+1], stock mode at [g*8+2], float s = 1/N at [g*8+4]" %
+             "mask << 1 at [g*8+1], stock mode at [g*8+2], the timer families' mask "
+             "at [g*8+3] while it is on, float s = 1/N at [g*8+4]" %
              GROUP_STRIDE,
              "static const uint32_t kWorldZeroOffset = 0x%X;  // float 0.0, then 1.0" %
              ZERO_OFFSET,
+             "static const uint32_t kWorldLiveModeOffset = 0x%X;  // pointer to the live stock mode" %
+             LIVE_MODE_OFFSET,
              "static const uint32_t kWorldIntNOffset = 0x%X;  // uint32 N per group" %
              INTN_OFFSET,
              "static const uint32_t kWorldCounterOffset = 0x%X;  // {ticks, counted, last tick, "
@@ -11434,7 +15057,20 @@ def main():
              "// `window` indexes kWorldCalls, 26 a length (1 << flag) x n times N, 27 a",
              "// call answering no (al = 0) between stock ticks (kWorldCalls too), 28 a",
              "// stored integer wait times N, 29 a literal blend, 30/31 computed blend",
-             "// forms, 32 an immediate float store changed from K to K*s",
+             "// forms, 32 an immediate float store changed from K to K*s, 37 a mover's",
+             "// call handed a copy of its vector with xyz times s (kWorldCalls too; its",
+             "// `counter` is the copy's 16-byte slot), 38 a motion advance's ended answer",
+             "// read as not ended between stock ticks while the motion does not loop (its",
+             "// `temp` the object register's number), 39 a compare decided on the stock",
+             "// tick and held for the period (its flags in the counter slot after its own),",
+             "// 40 a draw's call on a motion's ended side answering eax = -1 between stock",
+             "// ticks while the motion does not loop (kWorldCalls; `temp` the object register),",
+             "// 41 a div by the fps byte halved made by it times N, the divisor kept,",
+             "// 42 a countdown's test read as not yet between the ticks the timer families",
+             "// skip (their mask, mirrored into the group's byte [g*8+3] while it is on),",
+             "// 43 an fps-byte input read as stock 30 (seconds) or 30/60 (quake duration)",
+             "// while its counter family is on, 44 a quake factor from immutable shipped",
+             "// bits selected by live shadow mode while its camera update is paced",
              ""]
     for name, data in (("kWorldCode", pool.code), ("kWorldOrig", orig)):
         lines.append("static const uint8_t %s[] = {" % name)

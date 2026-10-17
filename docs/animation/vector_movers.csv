@@ -1,0 +1,60 @@
+site,function,opcode,exact_patch,entry_gate,review,argument_context,evidence
+26677F,2664F0,call,,,existing,"266777 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; step 266747 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2689FF,268720,call,,,existing,"2689F7 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 2689C9 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+26903C,268720,call,,,existing,"269034 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 269006 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2696F6,269510,call,,,existing,"2696EE lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 2696C0 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2698FA,269760,call,,,existing,"2698F2 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; step 2698C2 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2866BF,2865B0,call,,,existing,"2866B8 lea rdx, [rbp - 0x79]",enemy move v x speed x +F54 to 2DA3F0; dst 286691 (actor) converts it: only the factor of the vector product at 2866A5 (and a zero test)
+296B61,296700,call,,,existing,"296B5A lea rdx, [rbp - 0x39]",enemy move v x speed x +F54 to 2DA3F0; dst 296B2F (actor) converts it: only the factor of the vector product at 296B3F (and a zero test)
+297532,297090,call,,,existing,"29752A lea rdx, [rsp + 0x60]",enemy move v x speed x +F54 to 2DA3F0; dst 2974FC (actor) converts it: only the factor of the vector product at 29750E (and a zero test)
+298431,2981B0,call,,,existing,"298429 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 2983FB (actor) converts it: only the factor of the vector product at 29840D (and a zero test)
+29870F,2984A0,call,,,existing,"298707 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 2986D9 (actor) converts it: only the factor of the vector product at 2986EB (and a zero test)
+298F0A,298CC0,call,,,existing,"298F02 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 298ED4 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+299489,2990A0,call,,,existing,"299481 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 299453 (actor) converts it: only the factor of the vector product at 299465 (and a zero test)
+29995F,2994C0,call,,,existing,"299957 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 299929 (actor) converts it: only the factor of the vector product at 29993B (and a zero test)
+299CAF,299AC0,call,,,existing,"299CA7 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 299C79 (actor) converts it: only the factor of the vector product at 299C8B (and a zero test)
+299E86,299D40,call,,,existing,"299E7E lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 299E50 (actor) converts it: only the factor of the vector product at 299E62 (and a zero test)
+299FFF,299EC0,call,,,existing,"299FF7 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 299FC9 (actor) converts it: only the factor of the vector product at 299FDB (and a zero test)
+29A1DF,29A030,call,,,existing,"29A1D7 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 29A1A9 (actor) converts it: only the factor of the vector product at 29A1BB (and a zero test)
+29A5D5,29A380,call,,,existing,"29A5CD lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; dst 29A59F (actor) converts it: only the factor of the vector product at 29A5B1 (and a zero test)
+2A3F2E,2A3AF0,call,,,existing,"2A3F26 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; lin 2A3F0F (actor) converts it: K*s = -10 at 679B88
+2A5F31,2A5CA0,call,,,existing,"2A5F29 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; lin 2A5F11 (actor) converts it: K*s = -10 at 679B88
+2A8674,2A8630,call,,,patched,"2A866C lea rdx, [rsp + 0x20]",em60 helper 2A8630 (2026-10-08): dst 2A863A scales the speed read before the two vector products; retained +1590 keeps stock units.
+2AC201,2AC070,call,,,existing,"2AC1F9 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 2AC1CB (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2ACC5B,2AC940,call,,,existing,"2ACC53 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; step 2ACC23 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2AE9A0,2AE680,call,,,existing,"2AE998 lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 2AE96A (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2AEB4F,2AE680,call,,,existing,"2AEB47 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; step 2AEB19 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2AF671,2AF240,call,,,existing,"2AF669 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; step 2AF639 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2AFF40,2AFB70,call,,,existing,"2AFF38 lea rdx, [rsp + 0x60]",enemy move v x speed x +F54 to 2DA3F0; step 2AFF05 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B0293,2AFF90,call,,,existing,"2B028B lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 2B025D (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B0A32,2B0720,call,,,existing,"2B0A2B lea rdx, [rbp - 0x19]",enemy move v x speed x +F54 to 2DA3F0; step 2B0A00 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B0DAA,2B0720,call,,,existing,"2B0DA3 lea rdx, [rbp - 0x19]",enemy move v x speed x +F54 to 2DA3F0; step 2B0D78 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B112E,2B0720,call,,,existing,"2B1127 lea rdx, [rbp - 0x19]",enemy move v x speed x +F54 to 2DA3F0; step 2B10FC (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B1474,2B0720,call,,,existing,"2B146D lea rdx, [rbp - 0x19]",enemy move v x speed x +F54 to 2DA3F0; step 2B1442 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B2D52,2B2BA0,call,,,existing,"2B2D4A lea rdx, [rsp + 0x50]",enemy move v x speed x +F54 to 2DA3F0; step 2B2D1C (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2B319A,2B2FE0,call,,,existing,"2B3192 lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; step 2B3162 (actor) converts it: tools/find_actor_motion.py: on every path only a move by the speed
+2D9819,2D9460,call,world_anims.h call,,patched,"2D980B mov rdx, rbp","em8f 2D9460: sway (sin(4 x +E40 deg), 0, sin(6 x +E40 deg)) x 1/1.5/2.5 applied every tick; phase paced by counts 2D9615/2D96AB, so the vector holds N ticks. callvec 2D9819 hands the mover a copy with xyz x s; +E10/+E18 keep stock values. Directed: verify_vector_movers bobbers."
+37FB3A,37F9C0,call,,,existing,"37FB32 lea rdx, [rsp + 0x40]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 37F9EB scales the dt copy, every reader a per-tick step."
+38AA4A,38A8F0,call,,,patched,"38AA40 lea rdx, [rdi + 0xe10]",wp0f 38A8F0 (2026-10-08): lin 38A973 (outbound 10) and 38AA0D (homing 4) scale the transient +E10 vector.
+38AD22,38ABD0,call,,,existing,"38AD1B lea rdx, [rbp - 9]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 38AC19 scales the dt copy, every reader a per-tick step."
+390807,390490,call,,,existing,"390800 lea rdx, [rbp - 0x29]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 3904C5 scales the dt copy, every reader a per-tick step."
+390D01,390C00,call,,,existing,"390CFA lea rdx, [rbp - 0x19]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 390C2F scales the dt copy, every reader a per-tick step."
+39148A,391290,call,,,existing,"391482 lea rdx, [rsp + 0x40]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 3912C3 scales the dt copy, every reader a per-tick step."
+3916EE,3915E0,call,,,existing,"3916E7 lea rdx, [rbp - 0x69]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 391643 scales the dt copy, every reader a per-tick step."
+392245,391D60,call,,,existing,"39223D lea rdx, [rsp + 0x40]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 391DD3 scales the dt copy, every reader a per-tick step."
+39F0C0,39EE30,call,,,existing,"39F0B8 lea rdx, [rsp + 0x40]","weapon move by +E10 x xmm-held slow-motion dt; dst (slowmo) 39EE66 scales the dt copy, every reader a per-tick step."
+3B02E9,3AFA90,call,,,current_units,"3B02DA lea rdx, [rbp - 0x59]","pl00 3AFA90: moves by the root-motion step +EC0 (x, z zeroed), which the motion advance rewrites every tick from the frame step: current-tick units, no mover scale."
+3C81A9,3C7880,call,,,current_units,"3C81A2 lea rdx, [rbp - 0x30]","pl00 3C7880: root-motion step +EC0, times per-tick factors (xmm6, a surface damping) that are linear in the step: current-tick units."
+3C9415,3C84B0,call,,,current_units,"3C9400 lea rdx, [rbp - 0x19]",pl00 3C84B0: root-motion step +EC0 plus pl00's per-tick +E48 on z: both current-tick units.
+3C94E5,3C84B0,call,,,current_units,"3C94DE lea rdx, [rbp - 9]",pl00 3C84B0: root-motion step +EC0 times per-tick factors: current-tick units.
+560A46,5607A0,call,,,patched,"560A2D lea rdx, [rdi + 0xe10]","uta4 5607A0: +E10 = sin(4 x +E40 deg) x 0.5, phase paced by count 560932; lin 560A25 scales K. Directed: verify_vector_movers bobbers."
+561996,5616C0,call,,,patched,"56197C lea rdx, [rdi + 0xe10]",uta4 5616C0: forward surge +E18 = 0.4 x (sin(6 x +E40 deg) + 1) every tick until the +E3E timer; phase paced (561862). lin 561974/561986.
+56F566,56F330,call,,,patched,"56F54E lea rdx, [rdi + 0xe10]","utb6 56F330: +E10 = sin(4 x +E40 deg) x 0.5, phase paced by count 56F4A2; lin 56F546."
+57080D,570640,call,,,patched,"5707F5 lea rdx, [rdi + 0xe10]","utb7 570640: +E10 = sin(4 x +E40 deg) x 0.2, phase paced by count 570749; lin 5707ED."
+5CBFF4,5CBAD0,call,,,existing,"5CBFEC lea rdx, [rsp + 0x40]",enemy move v x speed x +F54 to 2DA3F0; dst 5CBFB6 (actor) converts it: only the factor of the vector product at 5CBFD0 (and a zero test)
+5D15E0,5D1080,call,,,patched,"5D15D9 lea rdx, [rbp - 0x59]","em86 5D1080: forward by (distance - 220) x 0.09 x speed x +F54 a tick, an approach to 220: blend 5D1599 makes 0.09 into 1 - (1 - 0.09)^s (exact at speed x +F54 = 1)."
+5D1E28,5D1810,call,,,patched,"5D1E21 lea rdx, [rbp - 0x49]","em86 5D1810: forward by (distance - 200) x 0.12 x t x speed x +F54 a tick (t 1..10 from the distance to the anchor +5430): blend 5D1DDD on the 0.12 (2026-10-10, trace_steps02.spec), exact at a factor of 0.12 and smooth past 1, where stock snaps or overshoots and no per-tick factor reproduces it"
+5D237F,5D2050,call,world_anims.h call,,patched,"5D2377 lea rdx, [rsp + 0x40]",em86 5D2050 (dash): forward by 50 x +544C; +544C = x 0.985 (decay root) + 0.0085 (lin 5D22FC). callvec 5D237F hands the mover s of the vector.
+5D3970,5D3600,call,world_anims.h call,,patched,"5D3968 lea rdx, [rsp + 0x30]","em86 5D3600: forward by K x +544C; +544C decays (0.965 root, 0.986 countlast 5D3737) and is pushed by 0.0025/0.0065 (lin). callvec 5D3970: s of the vector."
+5DAC62,5DA9A0,call,world_anims.h call,,patched,"5DAC5A lea rdx, [rsp + 0x30]","em87 5DA9A0: forward by K x +535C; +535C decays (0.965 root, 0.986 countlast 5DAA7B) and is pushed by 0.0065 (lin). callvec 5DAC62: s of the vector."
+5F2DC1,5F2A60,call,world_anims.h call,,patched,"5F2DB9 lea rdx, [rsp + 0x30]","em89 5F2A60: forward by 50 x +5060 (decay root 5F2C2F, 0.0065 lin push, wobble root 5F2D15). callvec 5F2DC1: s of the vector."

@@ -69,7 +69,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 24C2E2,call,2DA570,24C0B0,xmm3,0.279253@679CC0,0.3@675A30,accumulated and stored,step,constants,E889E20800
 24CD68,call,2DDF90,24CC60,xmm3,"mulss([rsi+1080]@24CD42, 0.139626@679C08)",,accumulated and stored,step,constants and +1080,E823120900
 24CDE8,call,2DDF90,24CC60,xmm3,"mulss([rsi+1080]@24CDC2, 3.14159@671E7C)",,accumulated and stored,snap,a limit of 3.14159: the whole turn in one tick,E8A3110900
-24DB65,call,2DDF90,24D9B0,xmm3,"mulss(cvtdq2ps(sub(#82, imul([rbx+A8]@24DB16, movzx([rsi+E37]@24DB08)))), 0.0174533@672928)",,accumulated and stored,manual-left,"the limit comes from (130 - an integer product) degrees, the product of +E37 and a register, not read yet: left until it is",E826040900
+24DB65,call,2DDF90,24D9B0,xmm3,"mulss(cvtdq2ps(sub(#82, imul([rbx+A8]@24DB16, movzx([rsi+E37]@24DB08)))), 0.0174533@672928)",,accumulated and stored,manual-left,"read: once per hop, an aim: em02 24D9B0's phases 0 and 1 (switch 24DEDC) both reach it and every path then sets +E36 = 2 (24DB8C); its limit (130 - 15 x +E37) degrees turns toward a random point near Amaterasu once, as the hop starts (once_blocks takes one phase value only)",E826040900
 24E51C,call,2DDF90,24E230,xmm3,"mulss([rdi+1080]@24E4F6, 0.0349066@679C00)",,accumulated and stored,step,constants and +1080,E86FFA0800
 24EAF3,call,2DDF90,24E8E0,xmm3,"mulss([rsi+1080]@24EACD, 0.139626@679C08)",,accumulated and stored,step,constants and +1080,E898F40800
 24EB2D,call,2DDF90,24E8E0,xmm3,"mulss([rsi+1080]@24EB07, 3.14159@671E7C)",,accumulated and stored,snap,a limit of 3.14159: the whole turn in one tick,E85EF40800
@@ -132,7 +132,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 2E0EC5,call,2DDF90,2E0610,xmm3,3.14159@671E7C,,"xmm2 live at the call at 2E0ED8, which reads it",query,,E8C6D0FFFF
 2E0F0A,call,2DDF90,2E0610,xmm3,3.14159@671E7C,,"xmm2 live at the call at 2E0F1D, which reads it",query,,E881D0FFFF
 2E4E92,call,2DDF90,2E4CA0,xmm3,6.28319@671E80,,accumulated and stored,snap,a limit of 6.28319: the whole turn in one tick,E8F990FFFF
-2E5711,call,2DDF90,2E5330,xmm3,"mulss(ret(xmm0 @2E56F2), 0.0872665@679C04)",,accumulated and stored,manual-left,"the limit comes from a getter on the object at 9C1F50 (23AD90) times 0.0873, not read yet: left until it is",E87A88FFFF
+2E5711,call,2DDF90,2E5330,xmm3,"mulss(ret(xmm0 @2E56F2), 0.0872665@679C04)",,accumulated and stored,step,constants and 23AD90's return,E87A88FFFF
 2EDDFB,call,2DDF90,2EDA70,xmm3,3.14159@671E7C,,"xmm2 live at the call at 2EDE0E, which reads it",query,,E89001FFFF
 2EDE98,call,2DDF90,2EDA70,xmm3,3.14159@671E7C,,"xmm2 live at the call at 2EDEAB, which reads it",query,,E8F300FFFF
 33A275,call,2DDF90,33A0B0,xmm3,3.14159@671E7C,,"xmm0 live at the call at 33A27A, which reads it",query,,E8163DFAFF
@@ -148,7 +148,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 385E73,call,2DDF90,385C50,xmm3,0.0959931@6816FC,,accumulated and stored,step,constants,E81881F5FF
 38745A,call,2DDF90,387140,xmm3,0.0523599@679C90,,accumulated and stored,step,constants,E8316BF5FF
 38867B,call,2DDF90,3884B0,xmm3,0.0523599@679C90,,accumulated and stored,step,constants,E81059F5FF
-38AE87,call,2DDF90,38ABD0,xmm3,"mulss(ret(xmm0 @38AC0B), 0.10472@679C80)",,accumulated and stored,manual-left,"the limit comes from a call's result (38AC0B) times 0.1047, not read yet: left until it is",E80431F5FF
+38AE87,call,2DDF90,38ABD0,xmm3,"mulss(ret(xmm0 @38AC0B), 0.10472@679C80)",,accumulated and stored,patched,already scaled by world_anims.h window 38AC19,E80431F5FF
 38B887,call,2DDF90,38B710,xmm3,0.261799@679C14,,accumulated and stored,step,constants,E80427F5FF
 38B8D8,call,2DDF90,38B710,xmm3,0.0174533@672928,,accumulated and stored,step,constants,E8B326F5FF
 38C24E,call,2DDF90,38C160,xmm3,0.261799@679C14,,accumulated and stored,step,constants,E83D1DF5FF
@@ -157,12 +157,12 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 38DF48,call,2DDF90,38DCB0,xmm3,3.14159@671E7C,,"xmm0 live at the call at 38DF4D, which reads it",query,,E84300F5FF
 38EA4A,call,2DDF90,38E8D0,xmm3,3.14159@671E7C,,"xmm0 live at the call at 38EA4F, which reads it",query,,E841F5F4FF
 38F58A,call,2DDF90,38F400,xmm3,3.14159@671E7C,,"xmm0 live at the call at 38F58F, which reads it",query,,E801EAF4FF
-3909FF,call,2DDF90,390490,xmm3,"mulss(ret(xmm0 @3904BC), 0.20944@679C38)",,accumulated and stored,manual-left,"the limit comes from a call's result (3904BC) times 0.2094, not read yet: left until it is",E88CD5F4FF
-390EE7,call,2DDF90,390C00,xmm3,"mulss(ret(xmm0 @390C26), 0.20944@679C38)",,accumulated and stored,manual-left,"the limit comes from a call's result (390C26) times 0.2094, not read yet: left until it is",E8A4D0F4FF
-3911AD,call,2DDF90,390C00,xmm3,"mulss(ret(xmm0 @390C26), 0.698132@679CA0)",,accumulated and stored,manual-left,"the limit comes from a call's result (390C26) times 0.6981, not read yet: left until it is",E8DECDF4FF
-3918D0,call,2DDF90,3915E0,xmm3,"mulss(ret(xmm0 @391621), 0.10472@679C80)",,accumulated and stored,manual-left,"the limit comes from a call's result (391621) times 0.1047, not read yet: left until it is",E8BBC6F4FF
+3909FF,call,2DDF90,390490,xmm3,"mulss(ret(xmm0 @3904BC), 0.20944@679C38)",,accumulated and stored,patched,already scaled by world_anims.h window 3904C5,E88CD5F4FF
+390EE7,call,2DDF90,390C00,xmm3,"mulss(ret(xmm0 @390C26), 0.20944@679C38)",,accumulated and stored,patched,already scaled by world_anims.h window 390C2F,E8A4D0F4FF
+3911AD,call,2DDF90,390C00,xmm3,"mulss(ret(xmm0 @390C26), 0.698132@679CA0)",,accumulated and stored,patched,already scaled by world_anims.h window 390C2F,E8DECDF4FF
+3918D0,call,2DDF90,3915E0,xmm3,"mulss(ret(xmm0 @391621), 0.10472@679C80)",,accumulated and stored,patched,already scaled by world_anims.h window 391643,E8BBC6F4FF
 39B833,call,2DDF90,39B7B0,xmm3,0.10472@679C80,,accumulated and stored,step,constants,E85827F4FF
-39BD3D,call,2DDF90,39BB10,xmm3,0.523599@679C4C,,accumulated and stored,step,constants,E84E22F4FF
+39BD3D,call,2DDF90,39BB10,xmm3,0.523599@679C4C,,accumulated and stored,once,"once per phase: reached only while [param(rcx) + 0xE36] == 0 (39BB44), which 39BD7C, 39BE19 then advances",E84E22F4FF
 39F5A0,call,2DDF90,39F2B0,xmm3,0.174533@679C0C,,accumulated and stored,step,constants,E8EBE9F3FF
 39F848,call,2DA570,39F770,xmm3,"mulss(ret(xmm0 @39F797), param(xmm1))",0.15@6784C8,accumulated and stored,manual-left,"read: callblend row (player group), k 0.15 and the slow-motion x rate limit",E823ADF3FF
 39F86F,call,2DDF90,39F770,xmm3,"mulss(ret(xmm0 @39F797), param(xmm1))",,accumulated and stored,manual-left,"read: callscale row (player group), the slow-motion x rate limit",E81CE7F3FF
@@ -303,7 +303,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 561CD8,call,2DDF90,561A90,xmm3,0.0523599@679C90,,accumulated and stored,step,constants,E8B3C2D7FF
 561E26,call,2DDF90,561A90,xmm3,0.0523599@679C90,,accumulated and stored,step,constants,E865C1D7FF
 561F74,call,2DDF90,561A90,xmm3,0.0523599@679C90,,accumulated and stored,step,constants,E817C0D7FF
-564FFE,call,2DDF90,564E60,xmm3,"mulss(cvtdq2ps(movsx([rbx+E3E]@564FD2)), 0.139626@679C08)",,accumulated and stored,manual-left,"the limit comes from the short +E3E times 0.1396, not read yet: left until it is",E88D8FD7FF
+564FFE,call,2DDF90,564E60,xmm3,"mulss(cvtdq2ps(movsx([rbx+E3E]@564FD2)), 0.139626@679C08)",,accumulated and stored,manual-left,"read: callscale row (objects group), uta8 564E60 turns toward its point by at most +E3E x 8 degrees a tick in phase 1 (reads.csv 565013)",E88D8FD7FF
 565258,call,2DDF90,565190,xmm3,0.558505@6827C4,,accumulated and stored,step,constants,E8338DD7FF
 5652D3,call,2DDF90,565190,xmm3,0.139626@679C08,,accumulated and stored,step,constants,E8B88CD7FF
 565A60,call,2DDF90,5658C0,xmm3,0.174533@679C0C,,accumulated and stored,step,constants,E82B85D7FF
@@ -378,7 +378,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 2587F2,call,23A2E0,258700,xmm1,0.10472@679C80,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8E91AFEFF
 258AB9,call,23A2E0,258930,xmm1,0.10472@679C80,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E82218FEFF
 258C02,call,23A2E0,258930,xmm1,0.10472@679C80,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8D916FEFF
-25A401,call,23A2E0,25A310,xmm1,"mulss([rsi+E14]@25A3EE, 0.0523599@679C90)",,the wrapper's,manual-left,"the limit comes from +E14 x 0.0524, a value the class ramps by speed x 0.3 a tick, not read yet: left until it is",E8DAFEFDFF
+25A401,call,23A2E0,25A310,xmm1,"mulss([rsi+E14]@25A3EE, 0.0523599@679C90)",,the wrapper's,manual-left,"read: callscale row (actor group), em0f 25A310: +E14 = 1 + rand, set once per action (25A3D1), x 3 degrees a tick in phase 1: a stock-unit limit",E8DAFEFDFF
 25A5C6,call,23A2E0,25A510,xmm1,0.0523599@679C90,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E815FDFDFF
 25CBA6,call,23A2E0,25CAE0,xmm1,0.139626@679C08,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E835D7FDFF
 25D7AB,call,23A2E0,25D5C0,xmm1,0.174533@679C0C,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E830CBFDFF
@@ -402,7 +402,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 2722BC,call,23A2E0,2721D0,xmm1,0.139626@679C08,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E81F80FCFF
 272497,call,23A2E0,2723C0,xmm1,0.785398@675D58,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8447EFCFF
 27262E,call,23A2E0,2725B0,xmm1,0.10472@679C80,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8AD7CFCFF
-2766F5,call,23A2E0,276400,xmm1,"mulss([rdi+E14]@2766E2, 0.0174533@672928)",,the wrapper's,manual-left,"the limit comes from +E14 x 0.0175, a value the class ramps by speed x 0.3 a tick, not read yet: left until it is",E8E63BFCFF
+2766F5,call,23A2E0,276400,xmm1,"mulss([rdi+E14]@2766E2, 0.0174533@672928)",,the wrapper's,manual-left,"read: callscale row (actor group), em2b 276400: +E14 ramps 3 -> 12 by 0.3 x speed a tick (its step row 2766FA), x 1 degree a tick while frame +F48 is in (15, 37): a stock-unit limit",E8E63BFCFF
 277CE7,call,23A2E0,2779A0,xmm1,0.148353@6808D8,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8F425FCFF
 278753,call,23A2E0,278590,xmm1,0.113446@67EC6C,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8881BFCFF
 278793,call,23A2E0,278590,xmm1,0.174533@679C0C,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8481BFCFF
@@ -414,7 +414,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 28C971,call,23A2E0,28C8D0,xmm1,0.0698132@679C34,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E86AD9FAFF
 28CE30,call,23A2E0,28CD80,xmm1,0.10472@679C80,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8ABD4FAFF
 28D6F1,call,23A2E0,28D320,xmm1,1.5708@675A48,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8EACBFAFF
-28D951,call,23A2E0,28D810,xmm1,1.5708@675A48,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E88AC9FAFF
+28D951,call,23A2E0,28D810,xmm1,1.5708@675A48,,the wrapper's,once,"once per phase: reached only while [param(rcx) + 0xE36] == 2 (28D859), which 28D956, 28DA89, 28DA9E then advances",E88AC9FAFF
 28D9C2,call,23A2E0,28D810,xmm1,0.174533@679C0C,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E819C9FAFF
 28DB5F,call,23A2E0,28D810,xmm1,0.0523599@679C90,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E87CC7FAFF
 28DCAC,call,23A2E0,28DBE0,xmm1,0.0349066@679C00,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E82FC6FAFF

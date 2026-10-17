@@ -26,7 +26,8 @@ A call is a turn step (selected) when all of these hold:
     added to the heading it was given, 2DA570's (already cur + the step)
     stored to the field it was given as cur;
   * the limit is in stock units: every leaf of its slice is an .rdata
-    constant or a field in FIELD_REVIEWED (the enemy's speed +1080), and
+    constant, a field in FIELD_REVIEWED (the enemy's speed +1080) or the
+    return of a function in RET_REVIEWED (23AD90's slow-motion factor), and
     for 2DA570 k is a constant in (0, 1). A leaf that is a parameter of the
     function holding the call is resolved at every call of that function
     (it must have no other route in);
@@ -42,7 +43,12 @@ A call is a turn step (selected) when all of these hold:
     flag) << 16)`, read the flag only for how long the pad shakes and are
     recognised as such (rumble_length);
   * no instruction of the slices, and not the call, is patched by another
-    family (it would be scaled already).
+    family (it would be scaled already);
+  * the call does not run once per phase of a state (tools/once_blocks.py: a
+    set-up block reached only while the phase byte has one value, which
+    advances it on every path): a turn there is a one-off aim, the same at
+    any rate (wp47 39BB10 turns toward its target by up to 30 degrees as it
+    is thrown), and is left as `once`.
 
 A wrapper whose limit is its parameter times stock units, and whose callers
 pass a snap as well as stock limits (23A2E0, the enemies' "turn toward
@@ -53,8 +59,8 @@ parameter. The wrapper must hand the parameter to nothing but step limits
 (param_feeds_limits).
 
 Everything else is left, with its reason: `query` (the result is used for
-something else: the flow's first refusal), `snap`, `table` (the port's mode
-table), `player` and `camera` (their own reviews: PLAYER, CAMERA), `wrapped`
+something else: the flow's first refusal), `snap`, `once`, `table` (the
+port's mode table), `player` and `camera` (their own reviews: PLAYER, CAMERA), `wrapped`
 (a call inside a wrapper whose callers are audited instead), or
 `manual-left` (MANUAL, read by hand). A call no rule decides is a PROBLEM,
 and tools/gen_world_anims.py refuses to write the steer group while there is
@@ -79,6 +85,7 @@ from capstone import x86_const as X
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_turn_callers as gtc  # noqa: E402
+import once_blocks  # noqa: E402
 import step_flow  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(HERE, ".."))
@@ -96,6 +103,25 @@ FIELD_REVIEWED = {
             "slowed (23A1C5, 2809E9), set only from data constants: a limit times it is "
             "in stock units",
 }
+# functions whose return is in stock units, so a limit times it is too
+RET_REVIEWED = {
+    0x23AD90: "the slow-motion factor: 1.0, or 0.25 while slow motion is on (9C1F50 "
+              "+234 == 1, 23B750), a per-tick dt the game multiplies its steps by",
+}
+_CALLEE = {}
+
+
+def callee(at):
+    """the direct target of the call at `at`, or None"""
+    if not _CALLEE:
+        img, _secs, _f, _sha = gtc.load_image()
+        _CALLEE["img"] = img
+    raw = bytes(_CALLEE["img"][at:at + 5])
+    if raw[0] != 0xE8:
+        return None
+    return at + 5 + int.from_bytes(raw[1:], "little", signed=True)
+
+
 # the camera: 468000..484000 turn the view and its target with both helpers,
 # partly through the per-mode table and the time scale; it is to be read as a
 # whole
@@ -105,26 +131,28 @@ CAMERA = (0x468000, 0x484000, "the camera, which the port compensates in part: r
 # the F3 harness); what she steers with these helpers is its own review
 PLAYER = (0x3A0000, 0x3E0000, "the player's own code (pl00..pl05): her turning is Phase A's, "
           "and these calls are its own review")
-# Calls read by hand and left, with why.
-NOT_READ = "the limit comes from %s, not read yet: left until it is"
+# Calls read by hand and left, with why (2026-10-11: none is unread).
 MANUAL = {
-    0x24DB65: NOT_READ % "(130 - an integer product) degrees, the product of +E37 and a "
-                         "register",
-    0x2E5711: NOT_READ % "a getter on the object at 9C1F50 (23AD90) times 0.0873",
-    0x38AE87: NOT_READ % "a call's result (38AC0B) times 0.1047",
-    0x3909FF: NOT_READ % "a call's result (3904BC) times 0.2094",
-    0x390EE7: NOT_READ % "a call's result (390C26) times 0.2094",
-    0x3911AD: NOT_READ % "a call's result (390C26) times 0.6981",
-    0x3918D0: NOT_READ % "a call's result (391621) times 0.1047",
+    0x24DB65: "read: once per hop, an aim: em02 24D9B0's phases 0 and 1 (switch 24DEDC) both "
+              "reach it and every path then sets +E36 = 2 (24DB8C); its limit (130 - 15 x "
+              "+E37) degrees turns toward a random point near Amaterasu once, as the hop "
+              "starts (once_blocks takes one phase value only)",
+    # 38AE87, 3909FF, 390EE7, 3911AD, 3918D0 (wp0f, wp1d), read 2026-10-11: the
+    # limit is 23AD90's slow-motion dt x k, its copy in xmm7 already a dst
+    # ("slowmo") row (38AC19, 3904C5, 390C2F, 391643): `patched` by those windows
     # read 2026-10-01: the weapons' aim 39F770, limit = the slow-motion factor
     # (23AD90) x the caller's rate, unscaled: the player group's callblend and
     # callscale rows (docs/animation/unattributed_reading/un_rows44.spec)
     0x39F848: "read: callblend row (player group), k 0.15 and the slow-motion x rate limit",
     0x39F86F: "read: callscale row (player group), the slow-motion x rate limit",
-    0x564FFE: NOT_READ % "the short +E3E times 0.1396",
+    0x564FFE: "read: callscale row (objects group), uta8 564E60 turns toward its point by "
+              "at most +E3E x 8 degrees a tick in phase 1 (reads.csv 565013)",
     # calls of the wrapper 23A2E0 (its limit is the parameter x speed)
-    0x25A401: NOT_READ % "+E14 x 0.0524, a value the class ramps by speed x 0.3 a tick",
-    0x2766F5: NOT_READ % "+E14 x 0.0175, a value the class ramps by speed x 0.3 a tick",
+    0x25A401: "read: callscale row (actor group), em0f 25A310: +E14 = 1 + rand, set once per "
+              "action (25A3D1), x 3 degrees a tick in phase 1: a stock-unit limit",
+    0x2766F5: "read: callscale row (actor group), em2b 276400: +E14 ramps 3 -> 12 by 0.3 x "
+              "speed a tick (its step row 2766FA), x 1 degree a tick while frame +F48 is in "
+              "(15, 37): a stock-unit limit",
 }
 # Functions holding a step that read a rate global somewhere, read by hand.
 RATE_REVIEWED = {
@@ -226,7 +254,9 @@ def judge(leaves, helper):
     fields = sorted({x[3] for x in leaves if x[0] == "field"})
     if any(x[0] in ("rate", "table", "tablefixed") for x in leaves):
         return "table", "a rate or mode-table leaf: compensated by the port"
-    odd = [x for x in leaves if x[0] not in ("const", "field")]
+    rets = sorted({callee(x[1]) for x in leaves if x[0] == "callret"} & set(RET_REVIEWED))
+    odd = [x for x in leaves if x[0] not in ("const", "field") and
+           not (x[0] == "callret" and callee(x[1]) in RET_REVIEWED)]
     if odd:
         return None, "leaves the rules cannot decide: " + ", ".join(gtc.render(x) for x in odd[:3])
     unknown = [f for f in fields if f not in FIELD_REVIEWED]
@@ -237,7 +267,7 @@ def judge(leaves, helper):
     if helper == POINT and any(c[3] >= SNAP for c in consts):
         return "snap", "a limit of %g: the whole turn in one tick" % max(c[3] for c in consts)
     return "stock", "constants" + ("" if not fields else " and " +
-                                   ", ".join("+%X" % f for f in fields))
+                                   ", ".join("+%X" % f for f in fields)) +         "".join(" and %X's return" % r for r in rets)
 
 
 class Survey:
@@ -296,9 +326,18 @@ class Survey:
         return out
 
     def patched(self, fn, touched):
-        return sorted({gtc.patched_by(self.pr, self.pstarts, x, fn.ins[x].size)
-                       for x in touched if x in fn.ins} -
-                      {None, "world_anims.h", "world_anims.h call"})
+        # the steer rows are calls of the helpers (world_anims.h call); a world
+        # window on the limit's slice (a dst on the slow-motion dt's copy, a lin
+        # on its constant) has converted the limit already
+        out = set()
+        for x in touched:
+            if x not in fn.ins:
+                continue
+            p = gtc.patched_by(self.pr, self.pstarts, x, fn.ins[x].size)
+            if p in (None, "world_anims.h call"):
+                continue
+            out.add("world_anims.h window %X" % x if p == "world_anims.h" else p)
+        return sorted(out)
 
 
 def param_feeds_limits(img, md, fn, reg, step_calls):
@@ -442,7 +481,11 @@ def audit():
             reviewed.add(root)
             notes.append("its function reads %s: %s" % (", ".join(reads[:3]),
                                                         RATE_REVIEWED[root]))
-        if kinds == {"stock"}:
+        ob = once_blocks.once(fn, at, sl) if kinds == {"stock"} else None
+        if ob:
+            row["decision"] = "once"
+            notes.insert(0, ob)
+        elif kinds == {"stock"}:
             row["decision"] = "step"
             notes.insert(0, "; ".join(sorted({n for (_v, n), _w, _t in verdicts})) +
                          (" (at every call of %X)" % root if verdicts[0][1] else ""))
@@ -508,8 +551,9 @@ def audit():
             else:
                 if reads:
                     reviewed.add(cf.root)
-                row["decision"] = "step"
-                row["evidence"] = "%s; %X turns the heading by it every call" % (note, root)
+                ob = once_blocks.once(cf, at, sl)
+                row["decision"] = "once" if ob else "step"
+                row["evidence"] = ob or "%s; %X turns the heading by it every call" % (note, root)
     for a in sorted(set(RATE_REVIEWED) - reviewed):
         problems.append("%X: stale RATE_REVIEWED entry" % a)
     for a in sorted(set(MANUAL) - used_manual):

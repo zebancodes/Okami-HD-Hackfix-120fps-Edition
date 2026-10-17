@@ -204,6 +204,7 @@ site,verdict,note
 18A18F,stock,"18A170..18A1E0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 18A243,stock,"Resource manager live reference accounting: 188C50/189650 increment entry+4 when returning an acquired resource pointer; 18A170/18A1E0 decrement it on release and begin unloading only when the last reference is gone. These counts track ownership, not elapsed frames."
 18B616,stock,"18B580 erases a supplied substring, moves the remaining bytes, updates string length, and writes the new terminator."
+18FC28,follows,esp01.. 18FBD0: the countdown +26D reloads by its period +26C when it reaches 0; its decrement 18FBE0 is counted
 18FC2F,follows,"esp 18FBD0: the flipbook frame +26E advances when the countdown +26D (count row 18FBE0) runs out, and wraps"
 18FC4E,follows,"esp 18FBD0: the flipbook frame +26E advances when the countdown +26D (count row 18FBE0) runs out, and wraps"
 18FF0C,stock,"18FE40 overwrites +1C4..+1D0 from 1921A0 and 191F40 on this call, then applies static byte color coefficients; the three multiplies are derived color conversion, not accumulating fades"
@@ -215,12 +216,15 @@ site,verdict,note
 190748,stock,"1902C0 constructs four projected output vertices in param_2: it initializes the four W lanes at 19065D-190676, fills the vertices with Apply3Array at 190707 or 190943, then adjusts their current screen coordinates; the five additions change this call's newly built output quad, not persistent motion state"
 190754,stock,"1902C0 constructs four projected output vertices in param_2: it initializes the four W lanes at 19065D-190676, fills the vertices with Apply3Array at 190707 or 190943, then adjusts their current screen coordinates; the five additions change this call's newly built output quad, not persistent motion state"
 19099B,stock,"1902C0 constructs four projected output vertices in param_2: it initializes the four W lanes at 19065D-190676, fills the vertices with Apply3Array at 190707 or 190943, then adjusts their current screen coordinates; the five additions change this call's newly built output quad, not persistent motion state"
+190F12,follows,esp01.. 190DA0: the phase +1A0 wraps by 0x800 once past +-0x400 (cmp 190F0A); its step 190EFC is counted
 190F28,follows,"esp 190DA0: the phases +1A0 and +1A2 wrapped back into range after their paced adds (190EFC, 190FC1)"
+190FD7,follows,esp01.. 190DA0: the phase +1A2 wraps by 0x800 once past +-0x400; its step 190FC1 is counted
 190FED,follows,"esp 190DA0: the phases +1A0 and +1A2 wrapped back into range after their paced adds (190EFC, 190FC1)"
 193134,stock,esp17 192F80: slot 4 derives each RGBA lane from template bytes on this call and clears the temporary lanes at 1931CC; these stores do not accumulate an elapsed-time step
 193152,stock,esp17 192F80: slot 4 derives each RGBA lane from template bytes on this call and clears the temporary lanes at 1931CC; these stores do not accumulate an elapsed-time step
 193170,stock,esp17 192F80: slot 4 derives each RGBA lane from template bytes on this call and clears the temporary lanes at 1931CC; these stores do not accumulate an elapsed-time step
 19319F,stock,esp17 192F80: slot 4 derives each RGBA lane from template bytes on this call and clears the temporary lanes at 1931CC; these stores do not accumulate an elapsed-time step
+195256,once,"espEmitter 1950D0: +19C gains 0.99 once per reload of the emission countdown, while its slow-motion flag (134 bit 25) holds"
 1958CD,stock,espEmitter02 1952F0: +200 is multiplied by +260 only to pass a temporary value to a virtual call and is restored from xmm6 at 1958D9
 1967E7,once,"195EC0 initializes an emitter from its data (called by its creators 197750, 19D0F0, 1A5D00): the spawn's scale +40 multiplies +180 and +294 once."
 196F17,once,"195EC0 initializes an emitter from its data (called by its creators 197750, 19D0F0, 1A5D00): the spawn's scale +40 multiplies +180 and +294 once."
@@ -358,6 +362,8 @@ site,verdict,note
 1C0BCA,fixed,"memory-card save 1C0160 state 0x66: +284 counts down from +288 = 8 / mode, which imuln 1C0A74 makes N times that; the progress +C (to 30) steps once per reload"
 1C1162,follows,"1C10F0 consumes the mode-divided wait stored at +288, expanded by imuln 1C159E; +284 is its active copy and +10 increments only after the expanded wait expires, then reloads +284."
 1C1177,follows,"1C10F0 consumes the mode-divided wait stored at +288, expanded by imuln 1C159E; +284 is its active copy and +10 increments only after the expanded wait expires, then reloads +284."
+1C5032,fixed,"cMcAction 1C4FA0: the scale's growth, src 1C5023"
+1C5962,fixed,"cMcAction 1C5870: the slide, src 1C594E"
 1C8DC5,fixed,"HUD number slide 1C8D80: the +48 store is reached from the inc (by a jmp) and the dec; counts on both (1C8DA6, 1C8DC3) and a notyetneg on the 10 test (1C8DA1) pace it; its layout update 1B54E0 runs every tick"
 1C8FD0,once,1C8F90 (from 1C86D0) stores a new allocation's pointer and bumps the generation count +2C8 per allocation.
 1C8FF9,once,1C8F90 (from 1C86D0) stores a new allocation's pointer and bumps the generation count +2C8 per allocation.
@@ -409,6 +415,7 @@ site,verdict,note
 1D5957,fixed,"an00 1D57B0 / an01 1D8B20 launch slide: position += velocity a tick, now src/pre rows 1D5937, 1D5952, 1D8C54, 1D8C68 (the velocity's decay is decay_factors.h's)"
 1D60E1,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
 1D6110,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
+1D6540,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1D668A,once,"an00 1D63F0: in its two motion-start branches, the random heading is written to +B4 before an optional sign reversal and addition of the parent heading; +E37 guards reinitialization and motion advance handles subsequent ticks"
 1D66A7,once,"an00 1D63F0: in its two motion-start branches, the random heading is written to +B4 before an optional sign reversal and addition of the parent heading; +E37 guards reinitialization and motion advance handles subsequent ticks"
 1D6787,once,"an00 1D63F0: in its two motion-start branches, the random heading is written to +B4 before an optional sign reversal and addition of the parent heading; +E37 guards reinitialization and motion advance handles subsequent ticks"
@@ -417,6 +424,7 @@ site,verdict,note
 1D69FC,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1D6A1F,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1D6A42,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
+1D6C78,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1D7178,once,an00 1D7020 / an01 1DA470 state starters: +E3C gains 60 or 45 once at the state's start when 169620 says so
 1D73D7,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1D73FF,fixed,"Animal heading approach: each angle store takes the result of its immediately preceding FixTurnRate call, whose per-tick blend is converted at entry and whose caller is audited in turn_callers.csv"
@@ -436,6 +444,7 @@ site,verdict,note
 1D8C70,fixed,"an00 1D57B0 / an01 1D8B20 launch slide: position += velocity a tick, now src/pre rows 1D5937, 1D5952, 1D8C54, 1D8C68 (the velocity's decay is decay_factors.h's)"
 1D932E,fixed,an01 1D9100 case 5: the countdown +1170 is count row 1D932E with notyet 1D9334 on its zero test
 1D94E2,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
+1D98C0,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1D9A0A,once,"an01 1D9770 is the sibling motion-start state machine: it writes a fresh random heading to +B4 before optional sign reversal and addition of the parent heading in both branches, with +E37 guarding reinitialization"
 1D9A27,once,"an01 1D9770 is the sibling motion-start state machine: it writes a fresh random heading to +B4 before optional sign reversal and addition of the parent heading in both branches, with +E37 guarding reinitialization"
 1D9B07,once,"an01 1D9770 is the sibling motion-start state machine: it writes a fresh random heading to +B4 before optional sign reversal and addition of the parent heading in both branches, with +E37 guarding reinitialization"
@@ -444,6 +453,7 @@ site,verdict,note
 1D9DE7,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1D9E0A,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1D9E2D,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
+1DA11A,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1DA5D8,once,an00 1D7020 / an01 1DA470 state starters: +E3C gains 60 or 45 once at the state's start when 169620 says so
 1DA85A,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1DA882,fixed,"Animal heading approach: each angle store takes the result of its immediately preceding FixTurnRate call, whose per-tick blend is converted at entry and whose caller is audited in turn_callers.csv"
@@ -458,6 +468,7 @@ site,verdict,note
 1DBF7D,once,an03 1DBEF0: slot 9 setup raises the actor Y coordinate by 30 before resetting its motion state
 1DBFC8,fixed,an03 1DBFB0: the +1184 behavior countdown now decrements on stock ticks
 1DC212,once,"an00/an01/an03 state starters: the sub-state +E36/+E37 steps once after the motion starts and the timer +E3C is set, then the next sub-state counts the timer"
+1DC247,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1DC500,once,"an00/an01/an03 state starters: the sub-state +E36/+E37 steps once after the motion starts and the timer +E3C is set, then the next sub-state counts the timer"
 1DC5E8,fixed,an03 1DC560: the randomized +E3C behavior countdown now decrements on stock ticks
 1DC6D8,fixed,an03/an0c: E48 and E4C approach their independent targets through compounded 0.1 or 0.2 factors before the resulting vector is used
@@ -473,13 +484,17 @@ site,verdict,note
 1DD1EE,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
 1DD683,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
 1DD6B2,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
+1DDAF0,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1DDC3A,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1DDC57,once,"an04 1DD9A0 / an06 1E2790: +B4 = a parent's heading + its own (negated or zeroed at random), wrapped, once at the state's start (+E36 steps right after)"
+1DDC94,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1DDD53,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1DDD70,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1DE1B1,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1DE1D4,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1DE1F7,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
+1DE2D3,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
+1DE3D5,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1DE8D8,once,an04 1DE770: +E3C gains 45 once at the state's start
 1DEB1F,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1DEB47,fixed,"Animal heading approach: each angle store takes the result of its immediately preceding FixTurnRate call, whose per-tick blend is converted at entry and whose caller is audited in turn_callers.csv"
@@ -496,6 +511,7 @@ site,verdict,note
 1E08A0,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
 1E0F36,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
 1E0F65,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
+1E1300,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1E147D,once,"an06/an08 1E11B0 is the sibling motion-start state machine: it writes a fresh random heading to +B4 before optional sign reversal and addition of the parent heading in both branches, with +E37 guarding reinitialization"
 1E149A,once,"an06/an08 1E11B0 is the sibling motion-start state machine: it writes a fresh random heading to +B4 before optional sign reversal and addition of the parent heading in both branches, with +E37 guarding reinitialization"
 1E15AD,once,"an06/an08 1E11B0 is the sibling motion-start state machine: it writes a fresh random heading to +B4 before optional sign reversal and addition of the parent heading in both branches, with +E37 guarding reinitialization"
@@ -504,6 +520,7 @@ site,verdict,note
 1E17F8,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1E181B,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1E183E,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
+1E1A6A,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1E1F7E,once,"an06/an08 1E1E50: the extra 45 units are added to a randomized +E3C timer when choosing its next behavior, not on each tick"
 1E2167,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1E218F,fixed,"Animal heading approach: each angle store takes the result of its immediately preceding FixTurnRate call, whose per-tick blend is converted at entry and whose caller is audited in turn_callers.csv"
@@ -526,6 +543,7 @@ site,verdict,note
 1E4458,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1E447B,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1E4556,follows,an07 1E4500: +E3C decreases only when the scaled motion advance reports animation completion
+1E4650,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1E4C01,once,"animal state starters (an07, an09, an0b): +E3C gains 60 once at the state's start when 169620 says so"
 1E522C,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1E52DC,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
@@ -541,9 +559,11 @@ site,verdict,note
 1E78D0,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1E79AE,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1E79CB,once,"an09 1E77E0: +B4 = a parent's heading + its own (negated at random), wrapped, once at the state's start"
+1E7A05,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1E7A9C,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1E7D08,follows,"an09 1E7AF0 / an0b 1EAC20: the colour's G channel +D24 steps by xmm1, the 0.03 that the world row on its load (1E7CD6, 1EAE28) scales for R"
 1E7D2B,fixed,an09 1E7AF0: the shared xmm1 step is now scaled before the three D20/D24/D28 growth additions
+1E7F2B,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1E83AE,once,"animal state starters (an07, an09, an0b): +E3C gains 60 once at the state's start when 169620 says so"
 1E86E4,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1E8C63,once,"animal state starters (an06/an08, an09): the sub-state +E36/+E37 steps once after the motion starts, beside the timer +E3C's set"
@@ -609,6 +629,7 @@ site,verdict,note
 1EF94F,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
 1EF967,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
 1EFC64,once,"animal state starters (an0b, an0c, an16, an05/an18): the sub-state +E36/+E37 steps once at the state's start"
+1EFC9E,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1EFD41,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1EFE01,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1EFE85,fixed,an05/an18 1EFE30: +1230 contact cooldown now decrements on stock ticks
@@ -624,6 +645,7 @@ site,verdict,note
 1F17E6,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1F1809,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1F182C,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
+1F1A36,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1F1ED1,once,"animal state starters (an0c, an05/an18): +E3C gains 60 once at the state's start when 169620 says so"
 1F20DB,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1F2695,fixed,an05/an18 1F2540: +B4 turns by scaled positive or negative 0.1396263 steps during target search
@@ -653,6 +675,7 @@ site,verdict,note
 1F53C9,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1F565A,follows,"an19 1F5420: the colour's G channel +D24 steps by xmm1, the 0.03 the world row 1F5628 scales for R"
 1F567D,fixed,an19 1F5420: the shared xmm1 rise step now scales all D20/D24/D28 growth additions
+1F5883,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1F5D3F,once,an19 1F5BE0: +E3C gains 60 once at the state's start when 169620 says so
 1F6027,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1F65F4,once,"animal state starters (an19, an1a): the sub-state +E36 steps once at the state's start, beside the motion's start and +E3C's set"
@@ -667,11 +690,13 @@ site,verdict,note
 1F740A,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
 1F77BE,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1F7AB2,once,"animal state starters (an19, an1a): the sub-state +E36 steps once at the state's start, beside the motion's start and +E3C's set"
+1F7AE6,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1F7B94,once,"animal state starters (an19, an1a): the sub-state +E36 steps once at the state's start, beside the motion's start and +E3C's set"
 1F8011,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1F8034,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1F8057,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1F8136,follows,an1a 1F80E0: +E3C decreases only when scaled motion advance reports animation completion
+1F8230,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1F8726,once,an1a 1F85B0: +E3C gains 60 once at the state's start when 169620 says so
 1F8989,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1F89D3,fixed,"+B4 is 2DA510's blend toward a target heading, whose factor FixTurnRate converts at 2DA510's entry for every caller (template turn_blend)"
@@ -684,6 +709,7 @@ site,verdict,note
 1F9091,once,"an00 an01 an07 an09 an1a/an19/an1e chase-stage helpers: +B4 is freshly seeded from the RNG as a +/-0.8727 heading, optionally signed or zeroed by a target-angle test, then wrapped relative to the parent before +E36 advances"
 1F90C8,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1F90D8,once,"an00 an01 an07 an09 an1a/an19/an1e chase-stage helpers: +B4 is freshly seeded from the RNG as a +/-0.8727 heading, optionally signed or zeroed by a target-angle test, then wrapped relative to the parent before +E36 advances"
+1F9B04,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by memory_timers.h until 1.0.2)"
 1FA44F,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1FA464,once,"Animal slot-36 action starters: E10 and E18 are multiplied by 3, 4 or 5 once for a new movement stage, and the same branch increments +E36 so it cannot repeat that multiplier on the next tick"
 1FA47C,once,"Animal slot-36 action starters: E10 and E18 are multiplied by 3, 4 or 5 once for a new movement stage, and the same branch increments +E36 so it cannot repeat that multiplier on the next tick"
@@ -692,9 +718,11 @@ site,verdict,note
 1FB14E,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
 1FB17D,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
 1FB462,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
+1FB53C,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1FB63F,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1FB8B7,follows,"the colour's G/B channel steps by xmm1, the constant the world row on its rip load scales for R (template colour_channel)"
 1FB8DA,fixed,an1e 1FB6A0: the shared xmm1 rise step now scales all D20/D24/D28 growth additions
+1FBADD,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1FBF71,once,+E3C gains a constant once at the state's start when 169620 says so (template e3c_bonus)
 1FC182,once,"Animal slot-26 actions: +E54 is freshly seeded from RNG after a fixed base and immediately advances the +E37 action stage; it is a target for that stage, not an accumulated per-tick step"
 1FC1AA,fixed,"Animal heading approach: each angle store takes the result of its immediately preceding FixTurnRate call, whose per-tick blend is converted at entry and whose caller is audited in turn_callers.csv"
@@ -718,10 +746,12 @@ site,verdict,note
 1FE410,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
 1FEA54,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
 1FEA83,fixed,"an00 an04/an0d/an0e an06/an08 an07 an09 an19 an1e an02/an1b/an1f/an20 slot 25: +1170's stored decrement is gated and the old-zero reload branch is suppressed between stock ticks, so the associated +E37 action-count increment fires only at stock cadence"
+1FEE0A,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1FEEE3,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1FEF00,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1FEF96,once,an04/an0d/an0e an09 an0b an02/an1b/an1f/an20 chase-stage helpers: the +B4 sign flips and relative-angle wraps use a fresh RNG heading before stage +E36 changes; the next update runs the following stage
 1FEFB3,once,"+B4 = a parent's heading + its own (negated or zeroed at random), wrapped, once at the state's start (template heading_start)"
+1FEFF1,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 1FF0AC,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 1FF1E3,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
 1FF206,fixed,"Eight animal slot-34 handlers: one locally scaled factor feeds all three D20/D24/D28 scale additions, and each channel retains its clamp to one"
@@ -738,6 +768,7 @@ site,verdict,note
 200292,once,"Randomized facing initialization is enclosed by E36 zero, flips only the constructed relative direction, then advances E36 to one and sets the final wrapped angle."
 2002E7,follows,"E37 counts two completed motions, decremented only after the time-corrected 4B9C80 motion completion result."
 200C14,once,"a state's start: the sub-state +E36/+E37 steps once beside the motion's start, an effect or sound, or the timer +E3C's set (em7a 2D4BFE: once per animation end) (template substate_start)"
+200C4E,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by action_timers.h until 1.0.2)"
 200CF1,once,Animal +E36 motion-stage transitions: stage branches advance after motion start or a one-time state action
 20141B,stock,"2013D0..201430 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 201512,fixed,anc7 201430: the B4 angle-smoothing helper now executes on stock ticks within its caller
@@ -808,6 +839,7 @@ site,verdict,note
 2066FD,once,"206590 creates an animal (2DA050), calls its slot 16 size setup, scales its radius bytes +1070/+1099 by the new +C8 and registers it in the 32-entry table 9C1D30 (count 9C1E30): once per spawn."
 206769,once,"206590 creates an animal (2DA050), calls its slot 16 size setup, scales its radius bytes +1070/+1099 by the new +C8 and registers it in the 32-entry table 9C1D30 (count 9C1E30): once per spawn."
 206A58,once,"cKiType reaction 206A10 (from 363F90, a hit): the sway's velocities +1128/+112C x -0.4 once per reaction"
+206A70,once,"cKiType reaction 206A10 (from 363F90, a hit): +112C x -0.4 once per reaction, as 206A58"
 207482,once,"2073D0 (from cKihonObj's update 207760) lowers the object by a byte offset once, flagged in +10EC."
 207A00,stock,"Submodel projection reads fresh B0 orientation after 4B9C80 in both callers, 208E90 and 36A0B0, then projects it into B0/B8 with sine/cosine and a fixed spatial factor. It is not recurrent damping."
 207BF1,stock,"Dormant debris helper: generator49 proves the entire function has no external direct entry, actual data/switch/LEA address reference or physical fallthrough; unwind descriptions cannot invoke it. This exclusion is rechecked on every generation."
@@ -824,6 +856,8 @@ site,verdict,note
 2091BB,fixed,objects' slot 36 (209000) state 1: the rise lin
 209397,follows,"209330: the colour's B channel +D28 steps by xmm2, the 0.2 world literal (209354) R and G use"
 209824,fixed,"cKiType 2097C0 state 2: the fall, now pre 20981F"
+209868,once,"cKiType vt25 handlers: +E54 x -0.3, the bounce when the dropped thing lands"
+209979,fixed,"cKiType 2097C0 pop-up: vy += 1 (a lift, unscaled) - 0.6 x ts (phase_steps.h) a tick, then y += vy unscaled: the fall's integration had pre 20981F, this one none; lin 209955 and pre 209974 put both in stock units"
 209B1F,once,cKi type response negates +1130 only after 45A7C0 reports a contact; this is collision direction reversal.
 20A059,follows,cKiType000 to cKiType003 209FD0: patched 20A044 supplies the 0.06 decrease for either one or two D2C subtractions
 20A069,follows,cKiType000 to cKiType003 209FD0: patched 20A044 supplies the 0.06 decrease for either one or two D2C subtractions
@@ -855,6 +889,8 @@ site,verdict,note
 20E282,fixed,turn toward a point 20E210: the heading's step is clamped by the limit argscale 20E230 scales
 20E645,stock,"20E5D0..20E6E0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 20E6C4,stock,"20E5D0..20E6E0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
+20E94C,stock,"20E920, the generic fall: vy(+E54) -= ts x g a tick, vy in stock units (callers seed stock constants; launch_velocities.h makes the port's ts x K launches stock), so the one ts is right"
+20E959,fixed,"20E920: y += vy a tick with vy in stock units, so falls went 4x as far and hops 4x as high at 120 (villagers, items, an0c, cCarryObj, wp0b, ut52, utd1); pre 20E954 makes it s x vy, and the landing look-aheads src 1EE7D4/1ED0D0, pre 387E5D"
 20E9F1,follows,"20E960 moves the position by the root-motion step +EC0..+EC8 (times the model scale, through the model's rotation), which the motion advance rewrites every tick at the current rate's share."
 20EA07,follows,"20E960 moves the position by the root-motion step +EC0..+EC8 (times the model scale, through the model's rotation), which the motion advance rewrites every tick at the current rate's share."
 20EA1E,follows,"20E960 moves the position by the root-motion step +EC0..+EC8 (times the model scale, through the model's rotation), which the motion advance rewrites every tick at the current rate's share."
@@ -899,6 +935,7 @@ site,verdict,note
 215F8F,once,ut0c 215E90 and 2162B0: +E36 advances once after sound/state setup or completion of a fixed 16-element cleanup loop; the next stage selects another handler
 216312,once,ut0c 215E90 and 2162B0: +E36 advances once after sound/state setup or completion of a fixed 16-element cleanup loop; the next stage selects another handler
 2172F0,once,ut12 ground contact: the -0.2 restitution at 2172F0 is followed immediately by changing +E36 from the falling phase to phase 4; this rebound executes once at the impact.
+218C35,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by lea_timers.h until 1.0.2)"
 21943D,once,ut2d 2193D0: +E36 advances immediately after motion setup in this stage helper
 21D2CD,once,"ut51 21D230: +10F0 counts a hit in idle/active phases only after E58 bit 25 is set. The branch switches E35 to phase two and clears bit 25 before returning to dispatch, so one hit is recorded per flag event."
 21D44D,once,"ut51 (21D230, from 21D0E0): +10F0 tallies discrete brush hits, with a sound and a state change."
@@ -965,6 +1002,7 @@ site,verdict,note
 22936C,fixed,ut96 229160: the object X and Z approach their computed targets using compounded 0.2 factors
 229B13,stock,"ut9a update 229A20 adds 20 to object Y solely to call 45FC40 in the raised coordinate frame, then subtracts the same 20 immediately after the query"
 229B39,stock,"ut9a update 229A20 adds 20 to object Y solely to call 45FC40 in the raised coordinate frame, then subtracts the same 20 immediately after the query"
+229BA2,fixed,"ut9a 229A20: both blends' factors (0.2, 0.05) are blend rows; the trace splits only because each path loads +D2C itself"
 229DBE,once,"ut9a phase-zero entry computes its initial orientation once, then advances E36 to one before subsequent updates."
 22A013,stock,ut9a's repeated orientation approach is the globally time-corrected 2DA510 turn helper.
 22A0D8,stock,"ut9a copies the player's X/Z into its own position each update before adding the normalized radial offset; these are fresh position construction, not integrated velocity. The bounded radial offset's growth is corrected separately at 22A05D."
@@ -1019,6 +1057,7 @@ site,verdict,note
 230C7A,stock,"utd7 230BC0 adds three to the bounded +1628 action strength after the triggered action/sound and clamps it to 60. This is an action count, not elapsed time."
 230F35,stock,"utd7 230E20 writes a sampled player position into its sixty-entry path ring only after the player has moved more than one unit from the preceding sample, then advances and wraps the index; this counts accepted spatial samples rather than elapsed updates"
 23119A,follows,"utd7 2310C0: the colour's B channel +D28 steps by xmm2, the 0.05 world literal R and G use (231157)"
+231322,follows,utd7 231200: +1628 counts down once per 60-tick cycle of +E3C (lea_timers.h paces it) while B6B240 is 0x208
 2313BE,fixed,"utd7 231200: the cooldown +1630, now count 2313BE"
 2315F0,follows,utd7 231510: D20/D24/D28 all use the patched 0.2 source at 2315C5 for their approach to 1.6; the target-position XYZ stores all use the patched 0.3 source at 23164C for their approach to indexed targets
 231618,follows,utd7 231510: D20/D24/D28 all use the patched 0.2 source at 2315C5 for their approach to 1.6; the target-position XYZ stores all use the patched 0.3 source at 23164C for their approach to indexed targets
@@ -1161,6 +1200,7 @@ site,verdict,note
 245D92,once,"245BA0 initializes the normalized launch direction, doubles it, loads the 70-tick wait and sets E36 to 1; later calls bypass these stores."
 245F6B,once,245E50 (from 242270) lifts the enemy by xmm7 once on a state's entry.
 246678,once,"24A340, 2543B0, 2A0190, 2A0D00, 2462C0, 249960: one-time work on a state's entry or end (a jump count +14A9 spent, a heading snap with a 2 pi limit, the sub-state +E36 advanced after a motion starts or the death fade ends)."
+246BEE,once,"em00/em81 2469A0: state 0's turn by 2DDF90, its limit speed x pi (a snap), runs once before the state moves on; state 2's per-tick turn has callscale 246B93"
 246CF1,once,246C20: +E37 (0 to 3 at random) counts the motion's loops down when one ends.
 246F47,once,em00..em03 slot 43 (246E60): +12B4 += 1 (and a coin toss) when the action starts
 246F54,once,em00..em03 slot 43 (246E60): +12B4 += 1 (and a coin toss) when the action starts
@@ -1185,6 +1225,7 @@ site,verdict,note
 24E3B8,fixed,em02 slot 49 (24E230): the hit probe's reach lin
 24E41A,fixed,em02 slot 49 (24E230): the hit probe's reach lin
 24E654,once,an action's sub-state (+E36) stepped as its animation starts or ends
+24EB4E,once,em03/em80 24E8E0: as 2469A0 (state 2's per-tick turn has callscale 24EAF3)
 24ECC5,fixed,"em03/em80 24EB80: the tint's countdown count, its approaches srcblend, the shock radius srcx"
 24ECDC,fixed,"em03/em80 24EB80: the tint's countdown count, its approaches srcblend, the shock radius srcx"
 24ECF3,fixed,"em03/em80 24EB80: the tint's countdown count, its approaches srcblend, the shock radius srcx"
@@ -1291,6 +1332,7 @@ site,verdict,note
 2714E1,once,"em27/em29 state starters: +E36 steps once at the state's start (with +11B4 += 20, +13E8 = 90 + 30 x random)"
 271636,once,"an action's loop count stepped when its animation ends (239420), or its sub-state (+E36)"
 271F44,once,"an action's loop count stepped when its animation ends (239420), or its sub-state (+E36)"
+2724A4,once,em27/em29 2723C0: +E36 steps once after the state's setup
 2724C5,once,"em13/em14 263400/263550, em27/em29 2723C0: a repeats-left count (+E37, +11B3) steps once per animation end"
 27261D,once,"em27/em29 state starters: +E36 steps once at the state's start (with +11B4 += 20, +13E8 = 90 + 30 x random)"
 272717,once,"em27 2726B0: a state's length set when it starts (90, 60 or 30 + 30 x a random share)"
@@ -1310,7 +1352,7 @@ site,verdict,note
 274D25,fixed,em2b's fade lin and its countdown count
 275103,fixed,em2b's fade lin and its countdown count
 275221,once,"an action's loop count stepped when its animation ends (239420), or its sub-state (+E36)"
-2755EF,fixed,"em2b, em2c and em2d countdowns count"
+2755EF,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by world count row 2755EF (em2b, +1394 = 3 or 6) until 1.0.2)"
 27593A,once,"an action's loop count stepped when its animation ends (239420), or after its effect or rumble"
 275A6C,once,"an action's loop count stepped when its animation ends (239420), or after its effect or rumble"
 275C3D,once,em2b 275A80: the repeats-left +1398 steps once per animation end
@@ -1330,6 +1372,7 @@ site,verdict,note
 276F19,once,"an action's loop count stepped when its animation ends (239420), or after its effect or rumble"
 276FEA,once,"em2b: a leap's velocity (+E10, +E18) set from the direction and the distance as it starts"
 276FF2,once,"em2b: a leap's velocity (+E10, +E18) set from the direction and the distance as it starts"
+2770E6,stock,"em2b 276DE0 state 3: +E3E is the volley pattern index, stepped once per projectile (when the paced +E3C reaches 0); event_counters.NOT_PACED 2770E3 restores it"
 2774AD,follows,"heading += +EF4, the animation's root turn (the motion advance writes it each tick)"
 277825,once,"em2b: an attack count (+1390, +19B3) stepped once per attack"
 27787C,once,"em2b: an attack count (+1390, +19B3) stepped once per attack"
@@ -1385,6 +1428,12 @@ site,verdict,note
 2815DC,fixed,The twin enemy's orbit 281470 is gatefn row 281470 (+2454 is also set afresh each call).
 281934,once,em2d: a spawned object's pointer stored
 2824A4,once,em2d 281AE0: a piece's bounce count steps once per bounce (its velocity x -0.95 there)
+2824C1,once,"em2d 281AE0 sub-objects: x -0.95 and x 0.95, then x -0.84 and x 0.7, the bounce at ground contact"
+2824C6,once,"em2d 281AE0 sub-objects: x -0.95 and x 0.95, then x -0.84 and x 0.7, the bounce at ground contact"
+2824F3,once,"em2d 281AE0 sub-objects: x -0.95 and x 0.95, then x -0.84 and x 0.7, the bounce at ground contact"
+2824F8,once,"em2d 281AE0 sub-objects: x -0.95 and x 0.95, then x -0.84 and x 0.7, the bounce at ground contact"
+282760,fixed,"em2d 281AE0: the second and third adds of the speed under slow time, src 282757 and 282765"
+28276E,fixed,"em2d 281AE0: the second and third adds of the speed under slow time, src 282757 and 282765"
 282949,fixed,em2d 281AE0: a child's approaches blend
 2829FB,fixed,em2d 281AE0: a child's approaches blend
 283771,fixed,em2d joint turn: its limits argscale
@@ -1397,6 +1446,7 @@ site,verdict,note
 28538D,once,a damage handler (health or a part's health -= damage)
 285956,fixed,slot-8 effect spawners and counters count
 286436,once,y lifted once as an action starts (before its sub-state steps)
+286559,fixed,"em3d 2860D0: this store's own path (load 2861BD) is the turn 2DA510, whose k FixTurnRate converts at its entry for every caller; the other state's +B0 step is 28653C's row"
 28689E,fixed,"em3d 2865B0: +B0 is 2DA510's blend, whose factor FixTurnRate converts at 2DA510's entry"
 286B8F,fixed,"em3d 2865B0: the clock +11C0 and the bob's y step, now pre 286B86/286BB2"
 287738,fixed,"em3f's fade, computed in doubles: count on its store"
@@ -1445,6 +1495,8 @@ site,verdict,note
 28D2D7,once,"em4d/em4e/em50, em52: +E36, +E37 or the repeats-left +124A step once per animation end"
 28D735,fixed,"em4d/em4e/em50: the rise y += 2 a tick, now lin 28D254, 28D72D, 2911FA"
 28D7DB,once,"em4d/em4e/em50, em52: +E36, +E37 or the repeats-left +124A step once per animation end"
+28D949,once,"em4d 28D810: +E24 x 0.1 once, with the state's step (+E36 += 1)"
+28D9DE,fixed,"em4d 28D810: the speed's x1.2 growth, srcroot 28D9CF"
 28DACF,once,"em4d family: a count stepped once per effect or spawn (+124A, +124B)"
 28DE7B,once,"em4d family: a count stepped once per effect or spawn (+124A, +124B)"
 28E778,once,"a state's start: the sub-state +E36/+E37 steps once beside the motion's start, an effect or sound, or the timer +E3C's set (em7a 2D4BFE: once per animation end) (template substate_start)"
@@ -1475,6 +1527,7 @@ site,verdict,note
 2993EE,follows,"em52 2990A0: +1278 -= xmm2, the 0.0025 world literal its other branch adds (2993BC)"
 299511,follows,"em52 2994C0: the phase +12B0 steps by speed x the .data literals 79FD60/79FD48 (world rows), and +1278 -= xmm3, the 0.003 world literal (299624)"
 29965A,follows,"em52 2994C0: the phase +12B0 steps by speed x the .data literals 79FD60/79FD48 (world rows), and +1278 -= xmm3, the 0.003 world literal (299624)"
+2996A6,stock,"em52 2994C0: +12B4 is set from the distance band every tick, then x4 in mode 3: a fresh value, not an accumulation"
 299705,follows,"em52 2994C0: the phase +12B0 steps by speed x the .data literals 79FD60/79FD48 (world rows), and +1278 -= xmm3, the 0.003 world literal (299624)"
 299B93,once,em52: its flight speed x 0.4 as an action starts
 29A4E6,follows,"em52 29A380: +1278 -= xmm2, the 0.0025 world literal (29A4B4)"
@@ -1512,6 +1565,7 @@ site,verdict,note
 2A3576,once,"a state's start: the sub-state +E36/+E37 steps once beside the motion's start, an effect or sound, or the timer +E3C's set (em7a 2D4BFE: once per animation end) (template substate_start)"
 2A36AE,once,"a state's start: the sub-state +E36/+E37 steps once beside the motion's start, an effect or sound, or the timer +E3C's set (em7a 2D4BFE: once per animation end) (template substate_start)"
 2A3BD9,once,"em56..em58 2A3AF0, 29F770's 2A4BA0/2A53F0: a clock (+1390, +1394) loses 450..900 once at the state's start, beside +E36's step"
+2A3CA8,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by memory_timers.h until 1.0.2)"
 2A3FB3,fixed,"em56..em58 2A3AF0: z += 2 x +E18 a tick, +E18's load a world row (2A3F9B), as x's"
 2A41AB,once,an action's loop count or hold stepped when its animation ends (239420)
 2A451F,once,"a cooldown charged once as an action starts (+1394 -= 900, +1390 -= 600)"
@@ -1597,6 +1651,7 @@ site,verdict,note
 2BA538,once,"em61 2BA4A0/2BB590 state starters: +1410 -= 1000, +144A and +E3E step once at the state's start"
 2BA54A,once,"em61 2BA4A0/2BB590 state starters: +1410 -= 1000, +144A and +E3E step once at the state's start"
 2BA613,once,"em61 2BA4A0/2BB590 state starters: +1410 -= 1000, +144A and +E3E step once at the state's start"
+2BA63C,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by memory_timers.h until 1.0.2)"
 2BAB7F,once,"em61: counts stepped once per action (+144A, +1410 -= 1000 as it starts)"
 2BAB8F,once,"em61: counts stepped once per action (+144A, +1410 -= 1000 as it starts)"
 2BAF68,once,"em61: counts stepped once per action (+144A, +1410 -= 1000 as it starts)"
@@ -1631,6 +1686,7 @@ site,verdict,note
 2C0772,fixed,es11 2C06D0: the random 0.02 component and mutable 0.05 base step are both scaled before adding to +1084
 2C079D,follows,es11 2C06D0: this store subtracts a whole unit only after the scaled +1084 phase crosses one
 2C0C8C,fixed,"em65 slot 8 2C0A60: a countdown count, the child's drop srcx, a speed clock srcx"
+2C1ACE,fixed,"em65 2C0A60: the motion-factor clock +16BC, pre 2C1AC2"
 2C1FEE,fixed,"em65 slot 8 2C0A60: a countdown count, the child's drop srcx, a speed clock srcx"
 2C2006,fixed,"em65 slot 8 2C0A60: a countdown count, the child's drop srcx, a speed clock srcx"
 2C21A1,fixed,"em65 slot 8 2C0A60: a countdown count, the child's drop srcx, a speed clock srcx"
@@ -1777,6 +1833,7 @@ site,verdict,note
 2E1B34,fixed,et04 2E1AD0: +D2C now rises or falls by a scaled 0.1 step and its clamp follows the same result
 2E2723,fixed,et07: material 1's U scroll (lin 2E2703) and its wraps; the fade-in count (count 2E2D60)
 2E272E,fixed,et07: material 1's U scroll (lin 2E2703) and its wraps; the fade-in count (count 2E2D60)
+2E2741,follows,et07 2E25B0: the material's U wraps by -1 after its scaled step
 2E2D60,fixed,et07: material 1's U scroll (lin 2E2703) and its wraps; the fade-in count (count 2E2D60)
 2E2FDD,fixed,"et08 update 2E2FA0: the six signed V scroll increments come from the lin rows at 2E2FBD, 2E300D, 2E304D, 2E308D, 2E30CD and 2E310D; each load feeds its material's first +64 store"
 2E2FE8,follows,et08 update: these stores add or subtract a whole unit only after the corresponding scaled V offset crosses -1 or +1; they normalize the scroll phase rather than advancing it
@@ -1828,6 +1885,7 @@ site,verdict,note
 2E9024,fixed,et2b 2E8FB0: actor C0/C4/C8 now rise by the shared scaled 0.1 step toward one
 2E9047,fixed,et2b 2E8FB0: actor C0/C4/C8 now rise by the shared scaled 0.1 step toward one
 2E906A,fixed,et2b 2E8FB0: actor C0/C4/C8 now rise by the shared scaled 0.1 step toward one
+2E9D90,once,et2d 2E93A0: +E34 steps once with the motion's start
 2E9DA6,follows,"et2d 2E93A0: +E34 steps when +E3C, paced by memory_timers.h, runs out"
 2EA278,stock,"et2e 2EA1B0 backs up actor Y in 9C490C, temporarily adds 10 at 2EA278 for the 45FC40 ground query, then restores actor Y from 9C490C at 2EA2A7; the stored change is only the query coordinate"
 2EA771,once,et2e 2EA550: E35 advances once after this action's closing effect and stage transition
@@ -1956,6 +2014,7 @@ site,verdict,note
 304A2D,once,the waypoint follower 3049D0: the waypoint index +1274 steps once per waypoint reached
 305C9B,once,Shared actor initialization zeroes its position and advances E36 from zero to one.
 306EA7,once,hm3c 306E30: the random 2..5 motion repetition count is chosen only at a motion-state transition
+306F17,once,hm3c 306E30: +E37 steps once each time the paced +E3C expires
 307622,fixed,"307340: x and z move by (target - x) / (+E3C + 1), now srcblend 307619/307642"
 30764B,fixed,"307340: x and z move by (target - x) / (+E3C + 1), now srcblend 307619/307642"
 308ACE,follows,E37 advances from zero to one only after 30F230 returns motion completion; that helper unconditionally advances the time-corrected 4B9C80 motion.
@@ -1992,6 +2051,7 @@ site,verdict,note
 314DD9,fixed,"314B60: the countdowns +1328, +1327, +132C, now count rows"
 315C97,stock,Root-motion setup unconditionally calls 30F230 and therefore 4B9C80 before multiplying the freshly evaluated EC4 displacement by the fixed spatial factor one-half.
 315EB6,once,"315E60 increments the zero entry latch during its stage initialization, changing that stage to initialized."
+315F97,follows,"315E60: the motion frame +F48 jumps back 12 frames once it reaches 50, a loop of the clip's last 12 frames"
 31607B,fixed,315E60: x's approach (blend 31606F) and y's rise (src 3160C1)
 3160C9,fixed,315E60: x's approach (blend 31606F) and y's rise (src 3160C1)
 3161E7,once,"315E60 increments the zero entry latch during its stage initialization, changing that stage to initialized."
@@ -2306,11 +2366,13 @@ site,verdict,note
 35C86A,fixed,objScroll 35C790: D20/D24/D28 rise together using the scaled shared 0.05 step in state five
 35C872,fixed,objScroll 35C790: D20/D24/D28 rise together using the scaled shared 0.05 step in state five
 35C8D4,fixed,"objScroll falls: y += vy a tick, now rows 35C8CF, 35D001, 35D21A, 35D456 (gravity phase_steps.h, drag decay_factors.h)"
+35C935,once,objScroll 35C790 and 35D0E0: the bounce at the floor (x -0.2; +E42 counts the bounces)
 35C9F9,once,"objScroll 35C790: the +500 height placement runs only in state zero, which changes to state one before the next update"
 35CE6F,follows,"objScroll 35CC30/35D0E0: the colour's G and B lerp toward 1 by xmm2, the 0.05 its R lerp loads through a world blend literal (35CE40, 35D346)"
 35CE8B,follows,"objScroll 35CC30/35D0E0: the colour's G and B lerp toward 1 by xmm2, the 0.05 its R lerp loads through a world blend literal (35CE40, 35D346)"
 35D009,fixed,"objScroll falls: y += vy a tick, now rows 35C8CF, 35D001, 35D21A, 35D456 (gravity phase_steps.h, drag decay_factors.h)"
 35D222,fixed,"objScroll falls: y += vy a tick, now rows 35C8CF, 35D001, 35D21A, 35D456 (gravity phase_steps.h, drag decay_factors.h)"
+35D283,once,objScroll 35C790 and 35D0E0: the bounce at the floor (x -0.2; +E42 counts the bounces)
 35D388,follows,"objScroll 35CC30/35D0E0: the colour's G and B lerp toward 1 by xmm2, the 0.05 its R lerp loads through a world blend literal (35CE40, 35D346)"
 35D398,follows,"objScroll 35CC30/35D0E0: the colour's G and B lerp toward 1 by xmm2, the 0.05 its R lerp loads through a world blend literal (35CE40, 35D346)"
 35D45E,fixed,"objScroll falls: y += vy a tick, now rows 35C8CF, 35D001, 35D21A, 35D456 (gravity phase_steps.h, drag decay_factors.h)"
@@ -2375,8 +2437,14 @@ site,verdict,note
 367C95,fixed,cKiType012/vt0c 367C30: D20/D24/D28 rise together using the scaled shared 0.2 step in state two
 367C9D,fixed,cKiType012/vt0c 367C30: D20/D24/D28 rise together using the scaled shared 0.2 step in state two
 368853,fixed,"cKiType014/017/018/023: the falls y += +E54, now pre 36884E, 3690F6, 369AD6, 36AACC"
+368897,once,"cKiType vt25 handlers: +E54 x -0.3, the bounce when the dropped thing lands"
+36899E,fixed,"cKiType014 368790 pop-up: vy += 2 (a lift, unscaled) - 0.6 x ts (phase_steps.h) a tick, then y += vy unscaled: the fall's integration had pre 36884E, this one none; lin 368973 and pre 368999 put both in stock units"
 3690FB,fixed,"cKiType014/017/018/023: the falls y += +E54, now pre 36884E, 3690F6, 369AD6, 36AACC"
+36913F,once,"cKiType vt25 handlers: +E54 x -0.3, the bounce when the dropped thing lands"
+369240,fixed,"cKiType017 369090 pop-up: vy += 2 (a lift, unscaled) - 0.6 x ts (phase_steps.h) a tick, then y += vy unscaled: the fall's integration had pre 3690F6, this one none; lin 369215 and pre 36923B put both in stock units"
 369ADB,fixed,"cKiType014/017/018/023: the falls y += +E54, now pre 36884E, 3690F6, 369AD6, 36AACC"
+369B1F,once,"cKiType vt25 handlers: +E54 x -0.3, the bounce when the dropped thing lands"
+369C20,fixed,"cKiType018 369A70 pop-up: vy += 2 (a lift, unscaled) - 0.6 x ts (phase_steps.h) a tick, then y += vy unscaled: the fall's integration had pre 369AD6, this one none; lin 369BF5 and pre 369C1B put both in stock units"
 36A6AA,fixed,cKiType023 slot 46 update 36A600: the sole xmm6 load at 36A665 supplies every one of these addss/subss material channel steps and has no other use before its restore; its lin row scales the common step
 36A6CB,fixed,cKiType023 slot 46 update 36A600: the sole xmm6 load at 36A665 supplies every one of these addss/subss material channel steps and has no other use before its restore; its lin row scales the common step
 36A70A,fixed,cKiType023 slot 46 update 36A600: the sole xmm6 load at 36A665 supplies every one of these addss/subss material channel steps and has no other use before its restore; its lin row scales the common step
@@ -2488,6 +2556,7 @@ site,verdict,note
 381BDD,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 381C1B,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 381C33,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
+381C79,stock,"Dormant debris 3809D0-3822D0 (no call, jump or code pointer enters it; the live copy is 3822D0/382340): a joint's +C4 falls 0.6 a tick there"
 381CA9,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 381D3F,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 381D5A,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
@@ -2495,6 +2564,7 @@ site,verdict,note
 3821A5,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 3821F2,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 38220A,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
+38224A,stock,"Dormant debris 3809D0-3822D0 (no call, jump or code pointer enters it; the live copy is 3822D0/382340): a joint's +C4 falls 0.6 a tick there"
 38227B,stock,"Dormant debris 3809D0-3822D0: 3809D0 runs 380A30 over eighteen slots, the second copy of the six-slot loop 3822D0/382340 (which is live, entered from 383510, and starts where this range ends); nothing enters the range, its three switch tables are its own, and the two data words that read as addresses in it straddle other data. Rechecked on every generation."
 3825BF,stock,wp02 beads: +1110 counts the beads in state 1 this tick (3822D0 zeroes it every tick)
 382806,fixed,wp02 bead: its rate +1938 += 0.8 (lin 3827F7)
@@ -2537,7 +2607,7 @@ site,verdict,note
 384221,fixed,"wp03 (384010, sub-state 1): position gains s of persistent stock-valued launch velocity +E10/+E14/+E18 through pre 3841E7/384203/38421C"
 384A3C,once,wp04 384930/384A80: +E36 steps once at the state's start
 384B7A,once,wp04 384930/384A80: +E36 steps once at the state's start
-384D06,fixed,"wp04 (384BE0), state 3: +E37's optional three-tick post-motion wait is paced by count 384D06 and its old-value zero transition by notyet 384CFC"
+384D06,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by world rows 384CFC/384D06 (wp04, +E37 = 3 or 0) until 1.0.2)"
 384DB9,follows,"wp04 (384BE0): after motion advance refreshes root rotation, +B0/+B4/+B8 gain the full current-rate +EF0/+EF4/+EF8 rotation deltas"
 384DD6,follows,"wp04 (384BE0): after motion advance refreshes root rotation, +B0/+B4/+B8 gain the full current-rate +EF0/+EF4/+EF8 rotation deltas"
 384DF6,follows,"wp04 (384BE0): after motion advance refreshes root rotation, +B0/+B4/+B8 gain the full current-rate +EF0/+EF4/+EF8 rotation deltas"
@@ -2588,7 +2658,7 @@ site,verdict,note
 3892A9,stock,"wp0d (388FD0): both continuous +B0/+B4 approaches use 2DA510, whose FixTurnRate hook already converts the 0.2 factor"
 3892CD,stock,"wp0d (388FD0): both continuous +B0/+B4 approaches use 2DA510, whose FixTurnRate hook already converts the 0.2 factor"
 389A85,once,wp0e state 389A30: +E36 increments only after the state-0 position setup
-389AC0,once,"wp04 384E30, wp07 386580/386620, wp0e 389A30: +E36 steps (and +B0 gains a random turn) once at the state's start"
+389AC0,fixed,wp0e 389A30: +B0 gains a wrapped unsigned random 16-degree increment every tick outside the one-time +E36 setup. lin389A98 scales that increment; the retained +E18 mover units remain unresolved.
 38AAE2,fixed,wp0f (38A8F0): the +10FC sound cooldown loses the slow-motion dt scaled at dst 38A935
 38AC7F,fixed,"wp0f (38ABD0): the +10F8 countdowns, clamped turn and +10FC sound cooldown use the slow-motion dt scaled at dst 38AC19"
 38AD3B,fixed,"wp0f (38ABD0): the +10F8 countdowns, clamped turn and +10FC sound cooldown use the slow-motion dt scaled at dst 38AC19"
@@ -2616,6 +2686,7 @@ site,verdict,note
 38C639,fixed,"wp11 (38C430), flight: position gains s of persistent stock-valued +E10/+E14/+E18 via pre 38C613/38C634/38C64D"
 38C652,fixed,"wp11 (38C430), flight: position gains s of persistent stock-valued +E10/+E14/+E18 via pre 38C613/38C634/38C64D"
 38CB27,fixed,wp12 helper 38CB10: +D2C loses s of 0.1 through srcx 38CB20 while its terminal comparison keeps the stock 0.1 threshold
+38CC8F,fixed,"wp12 38CB60 and 38CF10: the spin, lin 38CC76 and 38D140"
 38CF9D,once,"wp12 (38CF10), launch: +E14 gains 7 once before the owner-relative direction is normalized"
 38CFCB,once,"wp12 (38CF10), launch: the normalized direction is multiplied by 6 into persistent velocity +E10/+E14/+E18, then +E36 advances once"
 38CFDF,once,"wp12 (38CF10), launch: the normalized direction is multiplied by 6 into persistent velocity +E10/+E14/+E18, then +E36 advances once"
@@ -2624,7 +2695,9 @@ site,verdict,note
 38D0E5,fixed,"wp12 (38CF10, sub-state 1): position gains s of persistent stock-valued launch velocity +E10/+E14/+E18 through pre 38D0E1/38D0F8/38D111"
 38D0FD,fixed,"wp12 (38CF10, sub-state 1): position gains s of persistent stock-valued launch velocity +E10/+E14/+E18 through pre 38D0E1/38D0F8/38D111"
 38D116,fixed,"wp12 (38CF10, sub-state 1): position gains s of persistent stock-valued launch velocity +E10/+E14/+E18 through pre 38D0E1/38D0F8/38D111"
+38D159,fixed,"wp12 38CB60 and 38CF10: the spin, lin 38CC76 and 38D140"
 38D5AE,fixed,wp1a common update 38D490: position.y gains s of stock-valued +E54 through srcx 38D5A6
+38D634,once,"wp1a 38D490, wp1b 38E400, wp1c 38EEE0: +E54 x -0.3 (or -0.6), the bounce at landing; the fall itself is the port's ts x gravity"
 38D94E,fixed,"wp1a piece: position x/y/z uses a scaled copy of the old velocity (pre 38D931, 38D959, 38D980)"
 38D965,fixed,"wp1a piece: velocity damping and gravity run on the last tick of each stock period (countlast 38D939, 38D961, 38D978)"
 38D96D,fixed,"wp1a piece: position x/y/z uses a scaled copy of the old velocity (pre 38D931, 38D959, 38D980)"
@@ -2644,6 +2717,7 @@ site,verdict,note
 38DFB5,once,"wp1a (38DCB0), launch: the owner-speed-derived scalar initializes +E10/+E18 and accumulates them into +E20/+E28 once; owner +E48 already carries this rate's per-tick scale"
 38DFBD,once,"wp1a (38DCB0), launch: the owner-speed-derived scalar initializes +E10/+E18 and accumulates them into +E20/+E28 once; owner +E48 already carries this rate's per-tick scale"
 38E545,fixed,wp1b common update 38E400: position.y gains s of stock-valued +E54 through pre 38E540
+38E5CB,once,"wp1a 38D490, wp1b 38E400, wp1c 38EEE0: +E54 x -0.3 (or -0.6), the bounce at landing; the fall itself is the port's ts x gravity"
 38E7B2,fixed,wp1b helper 38E720: grounded slope changes persistent per-current-rate +E20/+E28 velocity by s^2 through the paired dst/pre rows
 38E7BA,fixed,wp1b helper 38E720: grounded slope changes persistent per-current-rate +E20/+E28 velocity by s^2 through the paired dst/pre rows
 38E7D6,stock,"wp1b helper 38E720: position.x/z directly gains +E20/+E28, which already stores displacement for the current-rate tick"
@@ -2666,6 +2740,7 @@ site,verdict,note
 38EC17,fixed,"wp1b (38E8D0), flight: +E20/+E28 damping is already 0.97^s through decay_factors.h"
 38EC26,fixed,"wp1b (38E8D0), flight: +E20/+E28 damping is already 0.97^s through decay_factors.h"
 38F047,fixed,wp1c common update 38EEE0: position.y gains s of stock-valued +E54 through srcx 38F03F; the later 0.94^s damping remains decay_factors.h's job
+38F0E5,once,"wp1a 38D490, wp1b 38E400, wp1c 38EEE0: +E54 x -0.3 (or -0.6), the bounce at landing; the fall itself is the port's ts x gravity"
 38F2CA,fixed,wp1c helper 38F240: grounded half-slope changes persistent per-current-rate +E20/+E28 velocity by s^2 through the paired dst/pre rows
 38F2EA,fixed,wp1c helper 38F240: grounded half-slope changes persistent per-current-rate +E20/+E28 velocity by s^2 through the paired dst/pre rows
 38F306,stock,"wp1c helper 38F240: position.x/z directly gains +E20/+E28, which already stores displacement for the current-rate tick"
@@ -2791,6 +2866,7 @@ site,verdict,note
 39515D,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 39519B,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 3951B3,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
+3951F9,stock,"Dormant debris 393F50-395850 (no call, jump or code pointer enters it; a copy of the live loop 3822D0/382340): a joint's +C4 falls 0.6 a tick there"
 395229,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 3952BF,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 3952DA,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
@@ -2798,6 +2874,7 @@ site,verdict,note
 395725,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 395772,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 39578A,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
+3957CA,stock,"Dormant debris 393F50-395850 (no call, jump or code pointer enters it; a copy of the live loop 3822D0/382340): a joint's +C4 falls 0.6 a tick there"
 3957FB,stock,"Dormant debris 393F50-395850: 393F50 runs 393FB0 over eighteen slots, a copy of the live six-slot loop 3822D0/382340 and of the dormant six-slot 395850; no call, jump, lea, code pointer or fallthrough enters the range, its three switch tables are dispatched only from inside it (dormant_internal_tables), and the two data words that read as addresses in it straddle other data (DORMANT_DATA_COINCIDENCES). Rechecked on every generation."
 395B42,stock,"Retained six-slot state loop 395850..396BE0: no external call/branch, aligned or unaligned actual data/code pointer, export/LEA reference or physical fallthrough. Its private bounded 14-case switch is internal control flow; generator proves its exact bound, load, dispatcher and destinations before rechecking the complete dormant range."
 395CC5,stock,"Retained six-slot state loop 395850..396BE0: no external call/branch, aligned or unaligned actual data/code pointer, export/LEA reference or physical fallthrough. Its private bounded 14-case switch is internal control flow; generator proves its exact bound, load, dispatcher and destinations before rechecking the complete dormant range."
@@ -2922,8 +2999,10 @@ site,verdict,note
 39B6EF,fixed,wp47 (39B3D0): +10F0 and +10EC lose the slow-motion dt scaled at its xmm7 copy (dst 39B409)
 39BA24,stock,"wp47 (39B950): +E10/+E18 multiply the normalized origin-to-target vector by the fixed +E28 length to construct the collision-probe endpoint passed to 2DC7B0; these are geometry, not displacement"
 39BA28,stock,"wp47 (39B950): +E10/+E18 multiply the normalized origin-to-target vector by the fixed +E28 length to construct the collision-probe endpoint passed to 2DC7B0; these are geometry, not displacement"
+39BA8E,fixed,"wp47 39B950: the hit point's distance step, lin 39BA74"
 39BABB,follows,"wp47 39B950: +10EC -= xmm6, the slow-motion dt the world row on 39B98A scales"
 39BD00,once,wp47 39BB10: +E54 loses a random 0..3 once as the state starts
+39BD5E,once,"wp47 39BB10, sub-state 6: the start block (+E36 == 0, advanced to 1 at 39BD7C) runs once per throw: with +10E5 set it draws a heading within 30 degrees (rand x 30 degrees) and takes rand x 3 off +E54; without it, one turn toward the target by at most 30 degrees (2DDF90 at 39BD3D, which survey_turn_steps now leaves as `once`: its steer row cut the aim to a quarter at 120). Not a draw a tick, as trace_reads01 had it"
 39C3BC,fixed,wp47 (39C0B0): +E18 is a continuously updated collision radius; scale its +3/-6 ramp steps while preserving the 53/21 spatial thresholds
 39C3F4,fixed,wp47 (39C0B0): +E18 is a continuously updated collision radius; scale its +3/-6 ramp steps while preserving the 53/21 spatial thresholds
 39C79E,fixed,wp47 (39C540): +E18 is a continuously updated collision radius; scale its +3/-6 ramp steps while preserving the 53/21 spatial thresholds
@@ -2976,6 +3055,7 @@ site,verdict,note
 3A1EAA,fixed,"wp5e (3A1DF0): lifetime +1108 loses the slow-motion dt, scaled at xmm7's copy (dst 3A1E16)"
 3A1F9D,fixed,"wp5e (3A1EF0): +D2C loses 0.03 x the slow-motion dt, scaled at xmm6's copy (dst 3A1F11)"
 3A25B2,fixed,wp5f (3A2530): +1108's two slow-motion-dt decrements are scaled at xmm7's copy (dst 3A2551)
+3A25F6,fixed,"wp5f 3A2530: the speed's gain, lin 3A25DE"
 3A26D2,fixed,wp5f (3A2530): +1108's two slow-motion-dt decrements are scaled at xmm7's copy (dst 3A2551)
 3A2783,once,"wp5f (3A2700), launch: +E14 gains 15 once before the direction to the owner is normalized"
 3A27B8,once,"wp5f (3A2700), launch: the normalized direction is multiplied by 15.5 and stored as persistent velocity +E10/+E14/+E18 once as sub-state 0 starts"
@@ -3000,6 +3080,7 @@ site,verdict,note
 3A3981,fixed,"pl02 (3A3550), second steering path: +E20/+E24/+E28 gain s of their acceleration, keep the 0.95 damping for the last tick, and move position by s of the resulting persistent velocity"
 3A3985,fixed,"pl02 (3A3550), second steering path: +E20/+E24/+E28 gain s of their acceleration, keep the 0.95 damping for the last tick, and move position by s of the resulting persistent velocity"
 3A398D,fixed,"pl02 (3A3550), second steering path: +E20/+E24/+E28 gain s of their acceleration, keep the 0.95 damping for the last tick, and move position by s of the resulting persistent velocity"
+3A3DD0,stock,"stock: pl02 3A3CA0 sub-state 1 (Issun with the Thief's Glove): +E3C indexes the brush stroke 169A40 copied, which holds one point per tick drawn, so one point a tick keeps the flight as long as the drawing (event_counters.py NOT_PACED; memory_timers.h paced it until 1.0.2)"
 3A3F69,once,"pl02 (3A3CA0): the selected target's +1147 byte increments only when it is still zero, as the terminal path-point event is processed; it is not an elapsed-tick counter"
 3A4190,fixed,"pl02 (3A3CA0, sub-states 2/3): +B4's per-tick turn limit is s-scaled at the 2DDF90 call 3A4179"
 3A41C4,fixed,"pl02 (3A3CA0, sub-state 3): all three position coordinates use dynamic approach factor +E10, converted independently at 3A41B8/3A41E9/3A421C to 1-(1-k)^s"
@@ -3019,6 +3100,7 @@ site,verdict,note
 3A4E88,fixed,pl03 (3A4DF0): +D20/+D24/+D28 approach 1 with their shared rate-converted 0.05 factor from blend 3A4E3C
 3A4E98,fixed,pl03 (3A4DF0): +D20/+D24/+D28 approach 1 with their shared rate-converted 0.05 factor from blend 3A4E3C
 3A4EE4,fixed,"pl03 (3A4DF0): +2250 advances once per stock tick through count 3A4EE4, and AND-capable notyet 3A4EEA preserves cl's masked old value while suppressing sound 0x40B between stock ticks"
+3A5326,stock,stock: pl03 3A51F0 sub-state 1: +E3C indexes the brush stroke 169A40 copied (one point per tick drawn) (event_counters.py NOT_PACED; memory_timers.h until 1.0.2)
 3A5473,once,"pl03 (3A51F0): the selected target's +1147 byte increments only when still zero, as the terminal path-point event is processed; it is not an elapsed-tick counter"
 3A57B9,fixed,"pl03 (3A51F0, sub-state 3): +B4's per-tick turn limit is s-scaled at the 2DDF90 call 3A57A2"
 3A57ED,fixed,"pl03 (3A51F0, sub-state 3): all three position coordinates use dynamic approach factor +E10, converted independently at 3A57E1/3A5812/3A5845 to 1-(1-k)^s"
@@ -3026,7 +3108,7 @@ site,verdict,note
 3A5852,fixed,"pl03 (3A51F0, sub-state 3): all three position coordinates use dynamic approach factor +E10, converted independently at 3A57E1/3A5812/3A5845 to 1-(1-k)^s"
 3A5959,fixed,"pl03 (3A51F0, sub-state 3): +E10 gains s of 0.02 a tick at 3A5937"
 3A5AD8,fixed,"pl03 (3A51F0, sub-state 5): +B4's per-tick turn limit is s-scaled at the 2DDF90 call 3A5AC6"
-3A62A9,fixed,pl04 appendage: +414C[part] advances along the preset path once each stock tick (count 3A62A9)
+3A62A9,stock,"stock: pl04 3A619F: +414C[part] indexes the brush stroke 169A40 copied for that part at 3A60BE (one point per tick drawn), not a preset path (world row removed in 1.0.2)"
 3A65A7,fixed,pl04 appendage: +414C[part] counts down the 90-tick target follow once each stock tick; the old-value zero test is gated between ticks
 3A6671,fixed,"pl04 appendage: all six return-to-anchor approaches use xmm7's 0.3, adjusted at its 3A6661 load to 1-(1-0.3)^s"
 3A6692,fixed,"pl04 appendage: all six return-to-anchor approaches use xmm7's 0.3, adjusted at its 3A6661 load to 1-(1-0.3)^s"
@@ -3062,7 +3144,7 @@ site,verdict,note
 3A82D8,fixed,"pl00 (3A80F0, fallback path): +D20/+D24/+D28 approach 1 with the shared factor converted at 3A8296 to 1-(1-0.05)^s"
 3A82E8,fixed,"pl00 (3A80F0, fallback path): +D20/+D24/+D28 approach 1 with the shared factor converted at 3A8296 to 1-(1-0.05)^s"
 3A835F,fixed,pl00 (3A80F0): +115A's ordinary -1 and conditional extra -5 countdown steps commit only on stock ticks
-3A8378,fixed,pl00 (3A80F0): +115A's ordinary -1 and conditional extra -5 countdown steps commit only on stock ticks
+3A8378,stock,"stock: pl00 3A80F0: the hold +115A loses 1 a tick (count row 3A835F) and 5 more for each button pressed this tick (B6B0D0) or B6B13C: per press, not per tick (row removed in 1.0.2)"
 3A8DC2,once,"pl00 event helper 3A8CD0: an accepted collision changes state, copies its hit point, and adjusts E14 by plus or minus 25 once for that event"
 3A8DEC,once,"pl00 event helper 3A8CD0: an accepted collision changes state, copies its hit point, and adjusts E14 by plus or minus 25 once for that event"
 3A953C,once,pl00 collision helper 3A9390: +1450 increments only after either collision query reports an accepted hit event
@@ -3078,12 +3160,14 @@ site,verdict,note
 3A9F5F,fixed,pl00 update: the slide's damping on the last tick of each stock period (countlast 3A9F37..3A9F5A)
 3A9F67,fixed,pl00 update: the slide's damping on the last tick of each stock period (countlast 3A9F37..3A9F5A)
 3AA1B5,follows,"pl00 update: B4DFBA's zero test, a timer the count row at 3AA0D1 paces"
+3AAD63,fixed,"pl00 3A9630: +1144, the lock-on retarget delay, counted down once a tick (at 0 +1110 takes +1108); its length is the fps byte (x 2 at 3AAD07), 60 at 60 and 120 against 30 at stock, so the count row it had here doubled the port's own doubling (4 s for 2 s at 60 and 120). The count row is gone and the stores 3AAD10, 3AAD7C, 3B9BD2 are the flag group's mulstores: 2 s (1 s) at every rate"
 3AAE43,fixed,"pl00 update (3A9630): after a lock-on change resets +1140 to 1, its 0.97-per-update fade is now converted to 0.97^s by the narrowly opted-in decay_factors.h site 3AAE2C; the long load-to-store path remains the same"
 3AB468,stock,"pl00 update: y - 450 (950) for the ground query 45FC40, undone right after"
 3AB486,stock,"pl00 update: y - 450 (950) for the ground query 45FC40, undone right after"
 3AB4C0,stock,"pl00 update: y - 450 (950) for the ground query 45FC40, undone right after"
 3AB4DE,stock,"pl00 update: y - 450 (950) for the ground query 45FC40, undone right after"
 3AB582,stock,"pl00 update: +FF8 is the ground query's height (45FC40 writes it, 46063C) plus 0.5 each tick, an offset after a fresh copy"
+3AB652,once,"pl00 3A9630: +E54 gains +E4C, a vertical impulse other code sets and this update clears right after (3AB664)"
 3AB710,fixed,"pl00 3A9630: +E54 x 0.2 while riding, now root 3AAEE9"
 3AB89C,follows,"pl00 update: on a moving platform, her local offset +FD0/+FD8 gains this tick's own move (already scaled) in the platform's frame"
 3AB8A4,follows,"pl00 update: on a moving platform, her local offset +FD0/+FD8 gains this tick's own move (already scaled) in the platform's frame"
@@ -3127,11 +3211,13 @@ site,verdict,note
 3B2A7F,fixed,pl00 state 1 (3B2620): +10B0/+10B8 receive s of the ground-vector acceleration and contribute s of their stock-valued velocity to position; their later 0.9^s decay remains covered by decay_factors.h
 3B2FCC,fixed,"pl00 3B2CF0, her ground movement: the run fix's jog parameters (kJogParams in dinput8_proxy.cpp, written to .data) carry the acceleration 7A8148 (ts^2), the charge threshold 7A8350 and divisor 7A8360 (ts) and the charge frames 7A8354 (/ts), so the speed and the charge +1174 are already in real time; rows here doubled them (removed 10-02)"
 3B3139,follows,"pl00 3B2CF0: +E48 x xmm7, the 0.94 whose load hoisted_decay.h converts (3B2FF7)"
+3B31A6,fixed,pl00 3B2CF0: the jog's speed update v x (1 - c v) and its blend toward the target read kJogParams (dinput8_proxy.cpp)
 3B31C4,fixed,"pl00 3B2CF0, her ground movement: the run fix's jog parameters (kJogParams in dinput8_proxy.cpp, written to .data) carry the acceleration 7A8148 (ts^2), the charge threshold 7A8350 and divisor 7A8360 (ts) and the charge frames 7A8354 (/ts), so the speed and the charge +1174 are already in real time; rows here doubled them (removed 10-02)"
 3B31E5,fixed,"pl00 3B2CF0, her ground movement: the run fix's jog parameters (kJogParams in dinput8_proxy.cpp, written to .data) carry the acceleration 7A8148 (ts^2), the charge threshold 7A8350 and divisor 7A8360 (ts) and the charge frames 7A8354 (/ts), so the speed and the charge +1174 are already in real time; rows here doubled them (removed 10-02)"
+3B3241,fixed,pl00 3B2CF0: the jog's speed update v x (1 - c v) and its blend toward the target read kJogParams (dinput8_proxy.cpp)
 3B333F,fixed,pl01 (3B2CF0): the mode-8 +E48 damping of 0.94 runs once at the start of each stock period through count 3B3318; other modes use the rewritten 7A81B8 table
 3B335C,fixed,"pl01 (3B2CF0): global B6B2AC bit 30 is held through the UI/load operation, so the extra 0.4 +E48 damping runs on the first stock-period tick through count 3B3354"
-3B358B,fixed,"pl00 3B2CF0, her ground movement: the run fix's jog parameters (kJogParams in dinput8_proxy.cpp, written to .data) carry the acceleration 7A8148 (ts^2), the charge threshold 7A8350 and divisor 7A8360 (ts) and the charge frames 7A8354 (/ts), so the speed and the charge +1174 are already in real time; rows here doubled them (removed 10-02)"
+3B358B,fixed,"pl00 3B2CF0 state 5, the dash: +1174 runs from the charge frames + 1 to +E3C = the charge frames + 150 (3B3435), so the run fix's x N frames cancel out and only the 150 is in stock ticks; count 3B3588 skips the inc between stock ticks (the dash was a quarter of stock's 5 s at 120)"
 3B36CB,stock,"pl01 (3B2CF0): state 7 damps +E48 with mode table 7A8198, already rewritten for this rate"
 3B3990,once,pl01 (3B2CF0): state 9 multiplies +E48 by 0.4 only when +10E0 bit 0x10 triggers an immediate transition back to state 0
 3B3B9B,fixed,pl01 (3B2CF0): the conditional +10B8 acceleration and x/z moves are s-scaled through pre 3B3B8B/3B3B93/3B3BAB/3B3BC2; subsequent 0.9 damping is already rewritten by decay_factors.h
@@ -3179,6 +3265,7 @@ site,verdict,note
 3B7EC7,fixed,"pl00 attack combo (3B7320), states 7 and 9: only the continuous 0.279253-radian 2DDF90 calls have their limit scaled at their call sites"
 3B8134,once,pl00 attack combo (3B7320): state-start target turns occur once; the pi turn also clears its 0x400 trigger bit in the same invocation
 3B81EC,fixed,"pl00 attack combo (3B7320), states 7 and 9: only the continuous 0.279253-radian 2DDF90 calls have their limit scaled at their call sites"
+3B83FD,once,pl00 3B7320 and 3B9A70: +E48 x 0.1 once at a state change; the other paths' decays are decay_factors.h's
 3B8482,stock,"pl00 attack combo (3B7320): fresh root-motion +EC8/+EC0 x 0.2 is per-current-step shaping, and +E48 already carries the current-rate displacement when added to +EC8"
 3B849A,fixed,pl00 attack combo (3B7320): conditional +E48 factors 0.5 and 0.1 are committed once per stock tick by count rows
 3B84A2,stock,"pl00 attack combo (3B7320): fresh root-motion +EC8/+EC0 x 0.2 is per-current-step shaping, and +E48 already carries the current-rate displacement when added to +EC8"
@@ -3217,11 +3304,12 @@ site,verdict,note
 3BB17F,once,"pl00 3B7320/3B9A70: a turn toward the lock-on target within 32..60 degrees, once at each attack step's start (with its motion and sounds)"
 3BB441,once,"pl00 3B7320/3B9A70: a turn toward the lock-on target within 32..60 degrees, once at each attack step's start (with its motion and sounds)"
 3BB677,fixed,pl00 linked attack: +E3C's countdown is paced by count 3BB677 and its zero-time effect check by notyet 3BB625
+3BB831,once,pl00 3B7320 and 3B9A70: +E48 x 0.1 once at a state change; the other paths' decays are decay_factors.h's
 3BB84C,fixed,"pl00 3B9A70: the forward drive into the root motion step, now pre 3BB844"
 3BBE55,fixed,pl00 collision helper 3BBC90: both successful overlap queries feed a sustained-contact path that executed on all 30 of 30 traced update ticks; +E48's 0.7 damping is now converted to 0.7^s by the narrowly opted-in decay_factors.h site 3BBE4D
 3BC34B,stock,"pl00 state 3BC300: +B8 and +E48 damping use port mode tables 7A8240 and 7A8218, already rewritten for the current rate by mode_constants.h"
 3BC42F,stock,"pl00 state 3BC300: +B8 and +E48 damping use port mode tables 7A8240 and 7A8218, already rewritten for the current rate by mode_constants.h"
-3BC4BD,fixed,"pl00 state 3BC300, state 3: +E3C is stock-gated by lea_timers.h and its old-value zero transition is held between stock ticks; +E3E is stock-gated by memory_timers.h"
+3BC4BD,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by lea_timers.h and notyet 3BC4C4 until 1.0.2)"
 3BC4D0,fixed,"pl00 state 3BC300, state 3: +E3C is stock-gated by lea_timers.h and its old-value zero transition is held between stock ticks; +E3E is stock-gated by memory_timers.h"
 3BC788,stock,"pl00 (3BC710): +B8 damping uses port mode table 7A8240, already rewritten for the current rate by mode_constants.h"
 3BC8E3,once,"pl00 (3BC710, sub-state 0): +B4/+B0 receive 2DE0A0's pi/pi-over-two turn once as the state advances to 1"
@@ -3258,6 +3346,7 @@ site,verdict,note
 3BF35C,once,"pl00 (3BEEE0): +11EB increments only after a successful 2DC7B0 collision query; it is a connected-hit count, not elapsed time"
 3BF3D7,fixed,pl00 (3BEEE0): +E54 halves once per stock tick while the five-tick hit cooldown +11E9 is active
 3BF4EC,once,"pl00 (3BEEE0, sub-state 0): +B4 turns toward the target with a pi-radian limit once as the state advances to 1"
+3BF67E,fixed,"pl00 3BEEE0 sub-state 1: +E54 (stock-tick units, moved by ts x +E54) gets the port's ts x 0.7 for kind 0 but - 0.4 (kind 1) or + 0.5 (kind 2) a tick unscaled; lin 3BF643/3BF676 make them x s"
 3BFB9C,fixed,"pl00 (3BEEE0, sub-state 7): +E3E loses one on stock ticks and its zero-time transition is held between them"
 3BFBC9,stock,"pl00 (3BEEE0): +E48 damping uses port mode table 7A8218, already rewritten for the current rate by mode_constants.h"
 3BFC61,fixed,pl00 (3BEEE0): the common-tail 2DDF90 turn's 16-degree per-tick limit is s-scaled at call 3BFC4E
@@ -3278,7 +3367,9 @@ site,verdict,note
 3C112D,fixed,pl00 state 3C1010: the repeated B4 target turn uses the s-scaled 10-degree limit at lin 3C10FD
 3C12D4,once,pl00 states 3C11F0 and 3C3470: both +B4 heading stores belong to state-0 initialization; each changes +E36 to 1 immediately beforehand and no ordinary state-1 update repeats the turn
 3C1690,once,"pl00 state 3C13F0: +B4 heading store occurs only after the state-0 target-contact query succeeds and advances +E36 to 1; it is a contact acquisition turn, not a per-update rotation"
+3C183C,fixed,"pl00 3C13F0: the 8-degree turn limit, lin 3C180C"
 3C19D4,once,pl00 3C18B0: the motion factor +F54 gains 0.5 once per press of the button
+3C19EE,stock,"stock: pl00 sub-state 0x29 (3C18B0, the dig): +E40 counts presses of the dig button (B6B0D0, pressed this tick); more than 5 finish the dig, so every press must count (memory_timers.h paced it until 1.0.2)"
 3C2136,stock,"pl00 wall recoil (3C20E0): +B8 damping uses port mode table 7A8240, already rewritten for the current rate by mode_constants.h"
 3C222D,once,"pl00 wall recoil (3C20E0): +1145 increments once per accepted input event, capped at 2; it is not an elapsed-tick counter"
 3C22AE,once,"pl00 wall recoil (3C20E0), sub-state 0: position.y gains 3 once during the initial placement"
@@ -3338,6 +3429,7 @@ site,verdict,note
 3C56BE,stock,pl00 (3C5350): +E48 damping selects mode table 7A8170 when +E3E is zero and 7A8158 otherwise; both are rewritten by mode_constants.h
 3C57FF,stock,"pl00 (3C57A0): +B8 damping uses mode table 7A8240, rewritten by mode_constants.h"
 3C5AED,stock,"pl00: +B8 and +E48 x the port's mode-table pairs (7A8158, 7A8160, 7A8170, 7A81E8, 7A8240), which mode_constants.h rewrites to k^timeScale"
+3C5B0C,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by lea_timers.h until 1.0.2)"
 3C5C45,fixed,pl00 3C57A0: +B4 is 2DA510's blend (FixTurnRate)
 3C5CAF,once,"pl00 (3C57A0), sub-state 0: the linked-actor turn at 3C5C9D runs once after advancing immediately to sub-state 1; keep its full 0.279253-radian limit"
 3C5DD3,stock,"pl00 (3C57A0), terrain type 8: +E48 damping uses mode table 7A8238, rewritten by mode_constants.h"
@@ -3347,8 +3439,11 @@ site,verdict,note
 3C60B4,stock,"pl00 (3C6080): +B8 damping uses port mode table 7A8240, already rewritten for the current rate by mode_constants.h"
 3C61CB,fixed,"pl00 (3C6080, sub-states 2/3): +B4 and +B0 receive 2DE0A0's changes with the caller-local 8/4-degree limits s-scaled at 3C615C/3C616C"
 3C6203,fixed,"pl00 (3C6080, sub-states 2/3): +B4 and +B0 receive 2DE0A0's changes with the caller-local 8/4-degree limits s-scaled at 3C615C/3C616C"
+3C625D,fixed,"pl00 3C6080's pull: +E48 (per tick) += 0.8 a tick up to 16 was a phase_steps.h site (x ts); an acceleration on a per-tick speed takes s^2: sq 3C624E, the cap srcx 3C6256 and immstore 3C6267 (find_phase_steps NOT_STEPS)"
+3C64E1,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by lea_timers.h until 1.0.2)"
 3C6563,fixed,"pl00 (3C6080, sub-state 1): +B4 and +B0 receive 2DE0A0's changes with the caller-local 8/4-degree limits s-scaled at 3C64F4/3C6504"
 3C659B,fixed,"pl00 (3C6080, sub-state 1): +B4 and +B0 receive 2DE0A0's changes with the caller-local 8/4-degree limits s-scaled at 3C64F4/3C6504"
+3C65F5,fixed,"pl00 3C6080's pull, sub-state 1: += 0.4 up to 16, as 3C625D: sq 3C65E6, srcx 3C65EE, immstore 3C6603"
 3C66C9,fixed,"pl00 (3C6080, sub-state 0): +11F0 advances only on stock ticks and the transition at 10 is held between them"
 3C678F,stock,pl00 state 3C6750: +B8 damping is looked up from the port's already rate-adjusted mode table 7A8240
 3C67F6,fixed,"pl00 state 3C6750: the 2DA510 angular approach uses the existing FixTurnRate hook, which converts its caller factor for the current rate"
@@ -3403,6 +3498,7 @@ site,verdict,note
 3CAA58,once,"pl00 (3CA320, sub-state 6): +B4 turns toward the target with a 60-degree limit once as the state advances to 7"
 3CACCF,once,"pl00 (3CA320): +E48 is multiplied by 0.7 only in the successful-hit block after 2DC7B0, as a connected-hit response"
 3CACEA,stock,"pl00 (3CA320): root-motion step +EC8 gains +E48, which is already a per-tick displacement at the current rate, before 2DA3D0 applies it"
+3CAFBF,fixed,"pl00 3CAE60: the lift's rise step, pre 3CAFBA"
 3CB575,once,"pl00 (3CB300), state 3: +1155 increments only on the +E72 bit-12 event after +E36 is changed to state 6, so it cannot repeat on the next update"
 3CB908,once,"pl00 (3CB300), state 6: +E37 increments after +E36 has already advanced to state 7 at 3CB6A2"
 3CBA29,once,"pl00 (3CB300), state 7: +1155 increments only on the +E72 bit-12 event after +E36 is changed back to state 6"
@@ -3454,7 +3550,7 @@ site,verdict,note
 3D12A1,fixed,pl00 (3D1140): position gains s of the target-direction vector +E10/+E14/+E18 through srcx 3D1281 and pre 3D129C/3D12B5
 3D12BA,fixed,pl00 (3D1140): position gains s of the target-direction vector +E10/+E14/+E18 through srcx 3D1281 and pre 3D129C/3D12B5
 3D1301,fixed,pl00 (3D1140): +E3C counts down on stock ticks and its zero-time exit waits for one
-3D13F4,fixed,"pl00 state 3D1330: the optional held-input two-count +E3C decrease and ordinary one-count decrease both commit on stock ticks, and the zero-time cleanup waits at notyet 3D145C"
+3D13F4,stock,"stock: pl00 3D1330: +E3C loses 2 for each button pressed this tick (B6B0D0, the press edge, not held) or B6B13C, while above 5: per press (row removed in 1.0.2)"
 3D1492,fixed,"pl00 state 3D1330: the optional held-input two-count +E3C decrease and ordinary one-count decrease both commit on stock ticks, and the zero-time cleanup waits at notyet 3D145C"
 3D163D,fixed,pl00 state 3D14B0: +E3C decrements on stock ticks and its old-value zero cleanup is held between them
 3D1789,fixed,pl00 state 3D1670: +E3C decrements on stock ticks and its old-value zero state transition is held between them
@@ -3466,6 +3562,7 @@ site,verdict,note
 3D34E6,fixed,"Whole-function gate 3D3400 runs every ballistic slot's position, acceleration, completion flags and age together at stock cadence. The generator proves the frame-dispatcher call discards the result, and the focused gate window checks passed."
 3D34EB,fixed,"Whole-function gate 3D3400 runs every ballistic slot's position, acceleration, completion flags and age together at stock cadence. The generator proves the frame-dispatcher call discards the result, and the focused gate window checks passed."
 3D34FA,fixed,"Whole-function gate 3D3400 runs every ballistic slot's position, acceleration, completion flags and age together at stock cadence. The generator proves the frame-dispatcher call discards the result, and the focused gate window checks passed."
+3D782B,fixed,"3D77B0: the wipe's alpha, count on its store"
 3D9C8F,follows,3D9C10 wraps an angle +C that is set elsewhere.
 3DCD7F,stock,"objScroll 3DCB90: these nine color and height interpolations are computed from the camera distance to a world point and a spatial width passed by the caller; the fraction is distance divided by width, not a per-tick blend"
 3DCDA1,stock,"objScroll 3DCB90: these nine color and height interpolations are computed from the camera distance to a world point and a spatial width passed by the caller; the fraction is distance divided by width, not a per-tick blend"
@@ -3560,6 +3657,7 @@ site,verdict,note
 3FCED3,fixed,cCockGameOver 3FCC40: the +7E and +7C transition waits now count down once per stock HUD tick before advancing to the next game-over state
 3FCF50,fixed,"cCockGameOver 3FCF50: the countdown +7C, now count 3FCF50, and the step after it"
 3FCF57,fixed,"cCockGameOver 3FCF50: the countdown +7C, now count 3FCF50, and the step after it"
+3FCF7E,fixed,"cCockGameOver 3FCF50: +68's step, lin 3FCF6E"
 3FCFDB,follows,"cCockGameOver 3FCFC0: +61 steps when +78, stepped by phase_steps.h, passes 1"
 3FD0E6,fixed,cCockGameOver 3FD0E0: +7E counts up to 30 only on stock ticks before changing the game-over stage
 3FD11C,once,cCockGameOver 3FD0E0: +61 advances only after the +7E counter exceeds 30 and this stage hands off to the next state
@@ -3592,7 +3690,7 @@ site,verdict,note
 3FF9C2,once,cCockLifeGauge 3FF720: sprite +20 gets a one-time 62-pixel offset when the life state changes and the branch returns immediately after saving +70
 3FF9E5,once,cCockLifeGauge 3FF720: sprite +20 gets a one-time 62-pixel offset when the life state changes and the branch returns immediately after saving +70
 3FFC39,fixed,cCockLifeGauge 3FFA00: the +78 life display wait is decremented on stock ticks by the hook at 3FFC36
-4004F1,fixed,"cCockLoading 4003D0: +39C and +70 advance only on stock ticks, retaining their respective limit checks"
+4004F1,stock,"stock: cCockLoading 4003D0: +39C counts the loading mini-game's well-timed presses (B6AD20), as integer_skips' refusal says (row removed in 1.0.2)"
 40059A,fixed,"cCockLoading 4003D0: +39C and +70 advance only on stock ticks, retaining their respective limit checks"
 4006E5,once,"cCockLoading 4005E0: +39C increments only after its 60-element loading array has been filled, then a loading stage changes"
 400824,once,cCockLoading 400710: the global screen-mode byte B6AC5C changes the cached +3A8 value and moves the sprite x offset by 64 once per mode transition
@@ -3670,6 +3768,7 @@ site,verdict,note
 4146FD,once,"cSubScrFile stage helper 414690: +99 changes stage after the resource check branch, with +9A reset to zero"
 4147C2,once,"cSubScrFile stage setup 414720: +99 changes stage after all child UI controls have been initialized, with +9A reset to zero"
 414964,once,"cSubScrFile stage helper 4147F0: +99 changes stage after the scene effect or completion branch, with +9A reset to zero"
+414998,stock,"pause manager 4147F0 (obj B1EBA0): +9A steps 1 -> 2 -> 3 on three calls, then the pause applies (mode byte, flags) and it resets: a three-frame hand-off, frames not time"
 414C58,stock,"4149C0 status submenu: +9F is a selected row, produced by 415410 after controller navigation flag tests; that helper bounds the row and plays the navigation sound"
 414FB2,stock,"4149C0 status submenu: +9F is a selected row, produced by 415410 after controller navigation flag tests; that helper bounds the row and plays the navigation sound"
 41506F,stock,"4149C0 status submenu: +9F is a selected row, produced by 415410 after controller navigation flag tests; that helper bounds the row and plays the navigation sound"
@@ -3707,7 +3806,9 @@ site,verdict,note
 41EEFE,fixed,"cSubScrFilesInfo 41E170/41EE90: each complete transition helper now runs on stock UI ticks, pacing its sprite offset and +334 countdown together; the +51 state change occurs only after the 15-tick wait"
 41EF0C,fixed,"cSubScrFilesInfo 41E170/41EE90: each complete transition helper now runs on stock UI ticks, pacing its sprite offset and +334 countdown together; the +51 state change occurs only after the 15-tick wait"
 41EF7D,once,"cSubScrFilesInfo 41EE90: +51 goes from 0 to 1 once, when the transition starts (and +334 is set to 15); the transition's own steps are rows 41EEFE, 41EF0C and 41EF12"
+41F626,fixed,"cSubScrFilesInfoMess: the panel's slide step, dst 41F615 and 420359"
 41F62B,fixed,cSubScrFilesInfoMess 41F5B0/4202F0: the +D4 opening and closing transition counts now decrement on stock ticks
+42036A,fixed,"cSubScrFilesInfoMess: the panel's slide step, dst 41F615 and 420359"
 42036F,fixed,cSubScrFilesInfoMess 41F5B0/4202F0: the +D4 opening and closing transition counts now decrement on stock ticks
 4207FD,fixed,cSubScrFilesInfoWanted 4207D0: +7B in state 1 now counts down only on stock UI ticks
 420937,stock,"cSubScrFilesInfoWanted 4207D0: +64 is the selected file row and changes only after controller LargeBitElement action tests, one row at a time"
@@ -3762,6 +3863,7 @@ site,verdict,note
 43986E,follows,4397B0: +29 steps when the count +20 (menu_transitions.h) passes 27
 439A38,once,HUD value animation 439910/439A50: +29 advances stage after its sound/effect setup and again when the value reaches the 25-unit threshold
 439AC4,once,HUD value animation 439910/439A50: +29 advances stage after its sound/effect setup and again when the value reaches the 25-unit threshold
+439B1E,once,menu 439AD0: +29 steps once when +C reaches 64
 439B2D,follows,"439AD0: +29 steps when +C or +10, stepped by phase_steps.h, pass their bounds"
 439B5A,follows,"439AD0: +29 steps when +C or +10, stepped by phase_steps.h, pass their bounds"
 43C02F,fixed,"The shop panels' drop-in bounces are gatefn rows 43C010, 43F6B0, 442790 (each the tail-jump target of its panel update)."
@@ -3874,6 +3976,7 @@ site,verdict,note
 4655E6,stock,"shared pl00/et6b collision resolution (464FE0): the x/z stores separate overlapping shapes by their current geometric penetration, using the contact radii and positions; this is a full spatial correction on each collision query, not a displacement integrated over elapsed ticks"
 467D23,fixed,467CA0's countdown is count row 467D23 with notyet 467D25.
 46847C,stock,camera 468420: +3B4 x the mode-table pair at 7A8178 (mode_constants.h)
+4684AE,fixed,"camera 468420: pitch += velocity, pre 46849E"
 46881C,stock,"468750..468AA0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 4689DD,stock,"468750..468AA0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 4689F5,stock,"468750..468AA0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
@@ -4038,12 +4141,14 @@ site,verdict,note
 47A683,fixed,"Camera mode 47A3A0: +1D0 and +200 approach 65 and 7A7C0C by the constants 0.15 and 0.1, blend rows 47A43B and 47A677 (loaded 12 bytes before the stores)."
 47ACE5,follows,"Camera modes: the yaw +1B4, pitch +1B0 and roll +1B8 are wrapped to +-pi by 13F2E0 after their approaches (now blended and limited per tick) have moved them; the wrap adds or removes whole turns only."
 47ACFA,follows,"Camera modes: the yaw +1B4, pitch +1B0 and roll +1B8 are wrapped to +-pi by 13F2E0 after their approaches (now blended and limited per tick) have moved them; the wrap adds or removes whole turns only."
+47AE5C,fixed,camera 47A3A0: srcroot 47AE31 on the 0.85 and pre 47AE44 on the integration
 47BB73,stock,"47BAE0..47C9D0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 47BD13,stock,"47BAE0..47C9D0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 47BD34,stock,"47BAE0..47C9D0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 47C03A,stock,"47BAE0..47C9D0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 47C05F,stock,"47BAE0..47C9D0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 47C074,stock,"47BAE0..47C9D0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
+47C1CD,stock,camera 47BAE0..47C9D0 has no direct external entry (as its other sites' readings)
 47D144,follows,"Camera modes: the yaw +1B4, pitch +1B0 and roll +1B8 are wrapped to +-pi by 13F2E0 after their approaches (now blended and limited per tick) have moved them; the wrap adds or removes whole turns only."
 47D158,follows,"Camera modes: the yaw +1B4, pitch +1B0 and roll +1B8 are wrapped to +-pi by 13F2E0 after their approaches (now blended and limited per tick) have moved them; the wrap adds or removes whole turns only."
 47D4FA,stock,"Camera modes 47C9D0/47DAB0: when the target's bearing from 2DE0A0 leaves +-0.436 (or +-0.401) rad, yaw or pitch moves by exactly the excess and is wrapped: a clamp that keeps the target in view, with the same result at any tick rate."
@@ -4075,6 +4180,7 @@ site,verdict,note
 484BDB,fixed,cDogLikeHm 484A20: the current +E54 vertical velocity is scaled before adding to actor Y
 484CD8,fixed,cDogLikeHm 484C70: +1200 effect cooldown now decrements on stock ticks
 484DAE,fixed,cDogLikeHm 484D40: +120C active behavior counter now increments on stock ticks
+484E67,fixed,"the four falls y += +E54 with +E54 the port's stock-unit velocity: pre 484E62, 599608, 5A469B, 5A65EC"
 48530B,once,cDogLikeHm 4850C0: this +E36 increment follows the effect spawn while entering a new behavior state; its countdown elsewhere is separate
 4855A2,fixed,cDogLikeHm 485390: +E36 action countdown now decrements on stock ticks
 485745,fixed,"the animals' launch and knockback slides (an00..an20, cAnimal 202DC0/206000, cDogLikeHm 485390): position += velocity a tick, now src/pre/lin/dst rows (un_rows51)"
@@ -4147,8 +4253,8 @@ site,verdict,note
 495C6C,fixed,"cGear 495950: the conditional +/- 6.28 stores only wrap angles after a stock-tick gear advance, which now occurs in the gated update"
 495C89,fixed,"cGear 495950: the conditional +/- 6.28 stores only wrap angles after a stock-tick gear advance, which now occurs in the gated update"
 495CA6,fixed,"cGear 495950: the conditional +/- 6.28 stores only wrap angles after a stock-tick gear advance, which now occurs in the gated update"
-496521,stock,"496500/496530: apply caller-supplied health and maximum-health amounts to save-state +8 and +C; health clamps to current maximum and maximum health clamps to zero, with no autonomous tick step"
-496542,stock,"496500/496530: apply caller-supplied health and maximum-health amounts to save-state +8 and +C; health clamps to current maximum and maximum health clamps to zero, with no autonomous tick step"
+496521,stock,"496500 adds a caller-supplied amount to the ink, [B205C0]+8 (0x3C00 a pot), clamped to 0 and the maximum +C; it has no step of its own. Its per-tick callers are paced at the call: the refill and idle drain in 17BE00 and the drawing drain in 16C7E0 (callgate rows 17BF33, 17BE6A, 16EAF6). Read as health until 2026-10-03."
+496542,stock,"496530 adds a caller-supplied amount to the ink maximum [B205C0]+C (an ink pot found), clamped to zero; called once per event."
 496587,stock,"496550 applies a supplied resource/reward delta, clamps the resulting total to capacity, and records positive earned amounts; changes are tied to the caller's award or consumption."
 4965B9,stock,"496550 applies a supplied resource/reward delta, clamps the resulting total to capacity, and records positive earned amounts; changes are tied to the caller's award or consumption."
 496706,once,"4965D0 adds an amount to an item or resource count in the save data (B205C0), capped: called when something is collected or bought."
@@ -4256,6 +4362,7 @@ site,verdict,note
 4AB96C,once,"a state's start: the sub-state +E36/+E37 steps once beside the motion's start, an effect or sound, or the timer +E3C's set (em7a 2D4BFE: once per animation end) (template substate_start)"
 4ABA4C,once,"a state's start: the sub-state +E36/+E37 steps once beside the motion's start, an effect or sound, or the timer +E3C's set (em7a 2D4BFE: once per animation end) (template substate_start)"
 4ABC15,fixed,Villager 4ABA90: the 15-degree turn a tick is lin row 4ABC08.
+4ABF27,fixed,"4ABE10 (from 30D250), the villager sub-object's hop: lin 4ABECB (the push +E10 = (0, 0, -s) at a reload, this tick's share of the root motion +EC0), count 4ABF08 (+E18's 0.1 x s once a stock period, before the copy) and countlast 4ABF27 (+E3C, where the reload and the countdown meet, on each period's last tick): the hop recurs every R + 1 stock ticks and each stock tick moves stock's distance"
 4AC119,once,"4AA900, 4AADC0, 4AB000, 4AB0C0, 4AB160, 4AB260, 4AC090 (villager states from 3087E0..30E110): the sub-state +E36 advances once, after a motion starts, an effect is spawned or a check passes."
 4AC187,stock,"4AC140..4AC1A0 has no direct external entry, aligned or unaligned actual code pointer, switch/LEA reference, export reference or physical fallthrough. Generator rechecks this complete range on the audited image; unwind frame descriptions cannot invoke it."
 4AD32C,fixed,Environment 4AC680: the fade +FE0's step is srcx row 4AD324.
@@ -4298,6 +4405,7 @@ site,verdict,note
 4BBED9,follows,4BBE10: the flicker table is walked once a pass of the task loop whose wait(1) at 4BBEB0 task_waits.h makes a stock tick's (the walk is an inner loop over the table)
 4BBF01,follows,4BBE10: the flicker table is walked once a pass of the task loop whose wait(1) at 4BBEB0 task_waits.h makes a stock tick's (the walk is an inner loop over the table)
 4BBF17,follows,4BBE10 loop body resumes after task_waits.h stock-paced wait(1) at 4BBEB0; the first pass runs once before that wait
+4BDA21,follows,"movie rumble PWM 4BD900: the phase, counted at 4BDA0A, wraps by 255 when it crosses"
 4BE6DB,stock,"Movie volume fade 4BE300: reached from 4A3F10, the movie idle test both scene spins wait on (4A3F10 -> 4A38E0 -> 4BE300)"
 4BE6E3,stock,"Movie volume fade 4BE300: reached from 4A3F10, the movie idle test both scene spins wait on (4A3F10 -> 4A38E0 -> 4BE300)"
 4C1263,once,Brush tutorial completion counter: 1690C0 status two reads the completed-command pulse at brush+110. 16C7E0 clears that pulse each active update and sets it when its countdown moves C80 from four to five; recognized stroke completion increments the tally once.
@@ -4429,7 +4537,9 @@ site,verdict,note
 4EF8F1,follows,"4EF210: a step of the loop whose wait(1) at 4EF8C0 task_waits.h makes a stock tick's, so one step a stock tick"
 4EF905,follows,"4EF210: a step of the loop whose wait(1) at 4EF8C0 task_waits.h makes a stock tick's, so one step a stock tick"
 4F0EAD,fixed,"ut23 4F0CD0: the spin's slowdown, now src 4F0EA6/4F1081"
+4F0EDF,fixed,"ut23 4F0CD0: the spin's integration, src 4F0ED0 and 4F10AB"
 4F1088,fixed,"ut23 4F0CD0: the spin's slowdown, now src 4F0EA6/4F1081"
+4F10BB,fixed,"ut23 4F0CD0: the spin's integration, src 4F0ED0 and 4F10AB"
 4F12FE,fixed,ut23 4F12C0: the local +1168/+116C angular phases use scaled +115C/+1160 rates before their clamps
 4F132C,fixed,ut23 4F12C0: each state rotates its submodel from a scaled local angular phase
 4F1351,fixed,ut23 4F12C0: the local +1168/+116C angular phases use scaled +115C/+1160 rates before their clamps
@@ -4610,13 +4720,13 @@ site,verdict,note
 53146D,follows,"531260: a step of the loop whose wait(1) at 531487 task_waits.h makes a stock tick's, so one step a stock tick"
 532C7F,fixed,"ut1d update 532BC0: five U/V scroll steps come from the lin rows at 532C5F, 532CA2, 532CE2, 532D18 and 532DB7 before these first material stores"
 532C8A,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
-532C9D,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
+532C9D,follows,ut1d 532BC0: the material's U wraps by -1 after its lin-scaled step
 532CB2,fixed,"ut1d update 532BC0: five U/V scroll steps come from the lin rows at 532C5F, 532CA2, 532CE2, 532D18 and 532DB7 before these first material stores"
 532CBD,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
 532CD0,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
 532CF5,fixed,"ut1d update 532BC0: five U/V scroll steps come from the lin rows at 532C5F, 532CA2, 532CE2, 532D18 and 532DB7 before these first material stores"
 532D00,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
-532D13,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
+532D13,follows,ut1d 532BC0: the material's U wraps by -1 after its lin-scaled step
 532D28,fixed,"ut1d update 532BC0: five U/V scroll steps come from the lin rows at 532C5F, 532CA2, 532CE2, 532D18 and 532DB7 before these first material stores"
 532D33,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
 532D46,follows,ut1d update: these stores only add or subtract a whole unit after the corresponding scaled U/V offset crosses -1 or +1
@@ -4895,6 +5005,7 @@ site,verdict,note
 56FB95,stock,"utb6 case 3: x/y/z are set to the freshly computed target by x += (target - x), a snap each update rather than a fractional approach; their operands are not per-tick rates"
 56FBAF,stock,"utb6 case 3: x/y/z are set to the freshly computed target by x += (target - x), a snap each update rather than a fractional approach; their operands are not per-tick rates"
 56FBCA,stock,"utb6 case 3: x/y/z are set to the freshly computed target by x += (target - x), a snap each update rather than a fractional approach; their operands are not per-tick rates"
+56FBEB,fixed,"utb6 56F760: the distance's fall, src 56FBDF"
 56FD14,fixed,"utb6 update 56F760: these +B0/+B4 phase stores receive 2DE0A0's per-tick turn deltas; in states 1, 3, 5, 7, 9 and 11 the caller-local angular limits are scaled by the corresponding lin rows at 56F8C0/56F8CC, 56FA95/56FAA1, 56FCB4/56FCC0, 56FE7E, 56FF59/56FF65 and 570078/570084"
 56FD35,fixed,"utb6 update 56F760: these +B0/+B4 phase stores receive 2DE0A0's per-tick turn deltas; in states 1, 3, 5, 7, 9 and 11 the caller-local angular limits are scaled by the corresponding lin rows at 56F8C0/56F8CC, 56FA95/56FAA1, 56FCB4/56FCC0, 56FE7E, 56FF59/56FF65 and 570078/570084"
 56FE09,fixed,"utb6 case 5: position x/y/z receive the converted dynamic +E14 blend at 56FDFD, 56FE1E and 56FE41; +E14 itself gains the full 0.04 only on each stock period's last tick at 56FE5B, after the approach"
@@ -4985,6 +5096,7 @@ site,verdict,note
 57E3FE,fixed,"ut33 57E020: the wobble helper now runs on stock ticks while its parent continues to advance motion; its +E14 angle, +E3E and +E40 effect windows, and +B0 phase follow the same pace"
 57E437,fixed,57E020 is a gatefn row: its decay runs once a stock tick.
 57E498,fixed,"ut33 57E020: the wobble helper now runs on stock ticks while its parent continues to advance motion; its +E14 angle, +E3E and +E40 effect windows, and +B0 phase follow the same pace"
+57F859,stock,"stock: counts loops of a motion: it changes on the tick the looping motion wraps (4B9C80/239420 answer ended), reloaded with a small count, so it runs as stock at any rate (tools/event_counters.py NOT_PACED; was paced by lea_timers.h until 1.0.2)"
 58246B,follows,"582380: a step of the loop whose wait(1) at 58254B task_waits.h makes a stock tick's, so one step a stock tick"
 58249A,follows,"582380 loop body resumes after task_waits.h stock-paced wait(1) at 58254B,58266E; the first pass runs once before that wait"
 5824C9,follows,"582380 loop body resumes after task_waits.h stock-paced wait(1) at 58254B,58266E; the first pass runs once before that wait"
@@ -5072,6 +5184,7 @@ site,verdict,note
 598D23,follows,598B10: these stores add 1 only after the scaled U offset crosses -1
 598D46,fixed,598B10: 598B56 loads the shared 0.05 step in xmm7; all four material +60 subtractions use it
 598D51,follows,598B10: these stores add 1 only after the scaled U offset crosses -1
+59960D,fixed,"the four falls y += +E54 with +E54 the port's stock-unit velocity: pre 484E62, 599608, 5A469B, 5A65EC"
 5996CA,fixed,"et99 599590: material 1's step, now lin 5996C2"
 59AC5F,fixed,"Map scripts 59ABA0, 5BC850, 5C22D0, 622D00 and the task 5F8190: their fades and the clamped turn are src rows 59AC5B, 5F81F0 and lin rows 5BCA47/5BCA54, 5C24A9/5C24B6, 622D84."
 59D652,follows,"the scripted task 59D230: a fade's first pass before its loop, whose wait(1) task_waits.h makes a stock tick's"
@@ -5111,6 +5224,7 @@ site,verdict,note
 5A414D,fixed,utc7 5A40A0: submodel B8 angle now receives a scaled step in each of its three movement branches
 5A41B3,fixed,utc7 5A40A0: submodel B8 angle now receives a scaled step in each of its three movement branches
 5A4260,fixed,utc7 5A40A0: submodel B8 angle now receives a scaled step in each of its three movement branches
+5A46A0,fixed,"the four falls y += +E54 with +E54 the port's stock-unit velocity: pre 484E62, 599608, 5A469B, 5A65EC"
 5A49FB,stock,utce 5A49A0: these three calls merely wrap the existing B0/B4/B8 angles into the canonical interval; they do not add a per-tick step
 5A4A10,stock,utce 5A49A0: these three calls merely wrap the existing B0/B4/B8 angles into the canonical interval; they do not add a per-tick step
 5A4A25,stock,utce 5A49A0: these three calls merely wrap the existing B0/B4/B8 angles into the canonical interval; they do not add a per-tick step
@@ -5133,6 +5247,7 @@ site,verdict,note
 5A60DC,fixed,utce 5A6050: two submodel B8 angles receive scaled opposite steps derived from +1074
 5A6116,fixed,utce 5A6050: two submodel B8 angles receive scaled opposite steps derived from +1074
 5A6180,fixed,utce 5A6130: E35 return-stage countdown now decreases on stock ticks after the per-submodel cleanup
+5A65F1,fixed,"the four falls y += +E54 with +E54 the port's stock-unit velocity: pre 484E62, 599608, 5A469B, 5A65EC"
 5A67F6,fixed,utcf 5A6760: +1074 now fades by a scaled state-selected step in both branches
 5A6829,fixed,utcf 5A6760: +1074 now fades by a scaled state-selected step in both branches
 5A6FCD,fixed,utd0 5A6F60: E36 action-stage countdown now decreases on stock ticks
@@ -5219,6 +5334,7 @@ site,verdict,note
 5C95A8,once,"an action's loop count stepped when its animation ends (239420), or a count of those (+3480, +3488, +11A8)"
 5CB716,once,"em85: a count stepped once per event (+3444 after its music call, a part's +1 when Amaterasu comes within 150, +3450 set)"
 5CBA5A,follows,em85: +34B0 -= 1 when its state clock +1334 crosses a whole number (the clock is an actor clock)
+5CBD25,fixed,"em85 5CBAD0: the 0.995 path's factor is srcroot 5CBC58, the 0.99 path's decay_factors.h 5CBD05, both pushes lin rows"
 5CBD4F,fixed,"5CBAD0, em86 5D3600, em87 5DA9A0: the steps toward a target, now lin rows on their step loads"
 5CBEA0,fixed,"5CBAD0: the speed +343C's 0.98 + 0.02 sin^2 damping is root rows 5CBE8E/5CBF2E (on the factor, 18 bytes before the store)."
 5CBF3E,fixed,"5CBAD0: the speed +343C's 0.98 + 0.02 sin^2 damping is root rows 5CBE8E/5CBF2E (on the factor, 18 bytes before the store)."
@@ -5230,8 +5346,8 @@ site,verdict,note
 5CCE7D,fixed,em85 joint turn: its limits argscale
 5CCF7A,once,"an action's loop count stepped when its animation ends (239420), or a count of those (+3480, +3488, +11A8)"
 5CD02B,once,"em85: a count stepped once per event (+3444 after its music call, a part's +1 when Amaterasu comes within 150, +3450 set)"
-5CD6DE,fixed,em85's +3490 count
-5CD7AE,fixed,em85's +3490 count
+5CD6DE,stock,em85 5CD690 counts selected attack attempts; sole caller 5C67DC is behind the 0.1 chance trial at 5C67D2. Restore the increment and pace the chance branch; fourth attempt sets cooldown 100 and clears the count.
+5CD7AE,stock,em85 5CD760 counts the same selected attempts; sole caller 5C67F5 is behind the 0.1 chance trial at 5C67EB. Restore the increment and pace the chance branch.
 5CDBFD,fixed,"5CDBA0 (heading += wrap(bearing - heading) x k) has one caller, 5CBAD0, whose k 0.15 is blend row 5CBDDE."
 5CDFD0,once,a damage handler
 5CDFE1,once,a damage handler
@@ -5360,10 +5476,13 @@ site,verdict,note
 5EE9D4,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
 5EF89C,fixed,"em89 5EF560: +5074's steps by the speed, now src 5EF876 / pre 5EF890"
 5EF92C,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
+5F0A01,fixed,"em89 5F08E0 and 5F1750: the volley count and its test, count and notyet"
+5F1871,fixed,"em89 5F08E0 and 5F1750: the volley count and its test, count and notyet"
 5F206E,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
 5F2090,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
 5F2875,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
 5F289C,follows,em89: +50AC -= 1 when its state clock +4FA8 crosses a whole number (an actor clock)
+5F2C58,fixed,em89 5F2A60: the push is a lin row on every band and mode (5F2AAD..5F2C1F)
 5F2C71,fixed,"em89 5F2A60: the step toward a target, now lin rows on its four loads"
 5F2D25,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
 5F2D95,fixed,"em89's approaches blend, its spin dst, its countdown count, its decay root, its heading's approaches srcblend"
@@ -5564,6 +5683,7 @@ site,verdict,note
 64010B,follows,"63FAD0 loop body resumes after task_waits.h stock-paced wait(1) at 63FDD9,640188; the first pass runs once before that wait"
 640147,follows,"63FAD0 is a task: its fades of +D2C sit in loops whose wait(1) at 63FDD9 and 640188 are task_waits.h loops, once a stock tick."
 6433DC,once,"618E90, 626A00, 629610, 643390, 63E4A0: counts of plays, rounds and events in the minigames' globals (B75028+D8, B75110+1B8, B75168+3, B75160+140), once per event."
+64542A,fixed,"esf1 6453F0: vy = (vy - 0.8) x 0.98 and y += vy a tick; decay_factors.h converts the 0.98 only, so it settled at 16x stock's fall at 120; lin 645408 (s of the 0.8) and pre 645425 (y += s x vy) put vy in stock units"
 645480,stock,esf1 6453F0: the position subtracts +E54 for a collision probe at 645485 and is restored from xmm6 at 64549F
 645696,once,"esf1 645620: +E36 advances after starting a motion; +E10/+E18 are derived from a position difference for that motion, then normalized and scaled as setup velocity"
 645798,once,"esf1 645620: +E36 advances after starting a motion; +E10/+E18 are derived from a position difference for that motion, then normalized and scaled as setup velocity"
@@ -5573,12 +5693,17 @@ site,verdict,note
 64EA91,follows,64E840 loop body resumes after task_waits.h stock-paced wait(1) at 64EB08; the first pass runs once before that wait
 65083B,once,scripted tasks 618C70 / 650720: a flag byte steps once per step of the script
 6515FE,once,"ut35 vtable initialization slot 9 initializes the object and four attachments, with a fixed 15-unit placement displacement."
+6519A5,fixed,"ut35 6518E0: +E48 is per tick (2DA460 moves it whole) and decays by the mode table (k^ts), so the port's ts x 0.06 push settled at the same per-tick speed, 4x the real speed at 120; lin 651995 makes it ts^2 x 0.06, as kAirAccelSites"
+6519D4,fixed,"ut35 6518E0: +E48 is per tick (2DA460 moves it whole) and decays by the mode table (k^ts), so the port's ts x 0.45 push settled at the same per-tick speed, 4x the real speed at 120; lin 6519C4 makes it ts^2 x 0.45, as kAirAccelSites"
 651A00,stock,ut35 6518E0: +E48 and +B8 x the mode-table pairs at 7A8160/7A81E8 (mode_constants.h)
 651A25,stock,ut35 6518E0: +E48 and +B8 x the mode-table pairs at 7A8160/7A81E8 (mode_constants.h)
+651C05,fixed,"ut35 651B40: +E48 is per tick (2DA460 moves it whole) and decays by the mode table (k^ts), so the port's ts x 0.065 push settled at the same per-tick speed, 4x the real speed at 120; lin 651BF5 makes it ts^2 x 0.065, as kAirAccelSites"
+651C34,fixed,"ut35 651B40: +E48 is per tick (2DA460 moves it whole) and decays by the mode table (k^ts), so the port's ts x 0.25 push settled at the same per-tick speed, 4x the real speed at 120; lin 651C24 makes it ts^2 x 0.25, as kAirAccelSites"
 651C60,stock,ut35 651B40/651DC0: +E48 and +B8 x the mode-table pairs at 7A8160/7A8240 (mode_constants.h)
 651C85,fixed,"ut35 B8 damping reads the indexed mode table at 7A81E8, already rewritten to stock-factor raised to elapsed time by mode_constants.h."
 651E86,fixed,ut35 +E48 damping reads the mode-indexed 7A8160/7A8164 pair; mode_constants.h rewrites the fast slot to stock 0.97 raised to the active time scale.
 651EAB,stock,ut35 651B40/651DC0: +E48 and +B8 x the mode-table pairs at 7A8160/7A8240 (mode_constants.h)
+651ECF,fixed,"ut35 651DC0: +E48 is per tick (2DA460 moves it whole) and decays by the mode table (k^ts), so the port's ts x 0.002 push settled at the same per-tick speed, 4x the real speed at 120; lin 651EBB makes it ts^2 x 0.002, as kAirAccelSites"
 651F22,fixed,"ut35 651DC0: the countdown +11A9, now count 651F22 with notyet 651F28"
 652A10,once,"652A10 and 652A50 change the bounded -3 to +3 command level at +1070, setting direction +1071; caller 648CE0 invokes them only after 1690C0 returns result two and 16A010 chooses result four to six, and 64A040 invokes the decrement during initialization"
 652A50,once,"652A10 and 652A50 change the bounded -3 to +3 command level at +1070, setting direction +1071; caller 648CE0 invokes them only after 1690C0 returns result two and 16A010 chooses result four to six, and 64A040 invokes the decrement during initialization"

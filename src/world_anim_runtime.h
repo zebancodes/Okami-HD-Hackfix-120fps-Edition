@@ -20,6 +20,7 @@
 //   [g*8+2]   the stock context's mode byte, 2 or 1 (smode), 0 at N = 1;
 //   [g*8+4]   s = 1/N, the share of a stock tick one tick is worth;
 //   [kWorldIntNOffset + 4g]   N as a dword (imuln);
+//   [kWorldLiveModeOffset]   pointer to the live shadow mode for quake retention;
 //   the literal slots   K*s for a step, K*s^2 for the wind push, 1 - (1 - K)^s
 //             for an approach's factor (blend).
 // N is fps / the stock context's rate (30, or 60 in the stock game's own 60 Hz
@@ -58,7 +59,7 @@ static int g_waKept = 0;
 static volatile LONG g_waN[kWorldGroups] = {};      // ticks per stock tick the pool holds now
 static volatile LONG g_waSmode[kWorldGroups] = {};  // the stock mode the pool holds (smode)
 static volatile LONG g_waChanges[kWorldGroups] = {};  // every change of a group's N
-static constexpr int kWaGroupMode = 8, kWaGroupRepeat = 9, kWaGroupActor = 10;
+static constexpr int kWaGroupObjects = 7, kWaGroupMode = 8, kWaGroupRepeat = 9, kWaGroupActor = 10;
 static constexpr int kWaGroupMenu = 11, kWaGroupSteer = 12, kWaGroupFlag = 13;
 static constexpr int kWaGroupSkip = 14, kWaGroupPlayer = 15;
 static_assert(kWorldGroups == 16, "world_anims.h and this runtime disagree on the groups");
@@ -69,7 +70,8 @@ enum WaKind : uint8_t { WA_LIN, WA_SQ, WA_SRC, WA_DST, WA_PRE, WA_ROOT, WA_GATEF
                         WA_NOTYET, WA_SMODE, WA_IMULN, WA_SRCX, WA_STEP, WA_CALLSCALE,
                         WA_CALLBLEND, WA_MULFLAG, WA_CALLGATE, WA_MULSTORE, WA_BLEND,
                         WA_BLENDR, WA_SRCBLEND, WA_IMMSTORE, WA_SRCROOT, WA_NOTYETNEG,
-                        WA_NOTYETB, WA_DSTN };
+                        WA_NOTYETB, WA_DSTN, WA_CALLVEC, WA_NOTYETEND, WA_HOLD, WA_CALLEND, WA_DIVN, WA_NOTYETT,
+                        WA_STOCKFPS, WA_STOCKPAIR, WA_LIMSQ };
 
 // A blend literal's slot: 1 - (1 - k)^(1/n) for 0 < k < 1, the root taken by one
 // sqrtf per halving as the `root` stubs take it (n = 2, 4), so the verifier's
@@ -84,7 +86,8 @@ static float waBlendLiteral(float k, unsigned n) {
 static bool waCounted(uint8_t kind) {
     return kind == WA_GATEFN || kind == WA_COUNT || kind == WA_GATE0 || kind == WA_COUNTLAST ||
            kind == WA_COUNT2 || kind == WA_NOTYET || kind == WA_NOTYETNEG || kind == WA_NOTYETB ||
-           kind == WA_SMODE || kind == WA_CALLGATE;
+           kind == WA_SMODE || kind == WA_CALLGATE || kind == WA_NOTYETEND || kind == WA_HOLD ||
+           kind == WA_CALLEND || kind == WA_NOTYETT;
 }
 
 static bool worldGroupEnabled(int g) {
@@ -111,8 +114,8 @@ static bool worldGroupEnabled(int g) {
     }
 }
 
-// smode is the stock context's mode byte (2 or 1) the repeat's counters lose
-// on a stock tick at N > 1; at N = 1 the stubs read the real byte, and 0 here.
+// smode is the tick's stock context (2 or 1), used by repeat counters and
+// quake duration. At N = 1 the stubs read the real byte, and 0 here.
 static void worldAnimsApply(int g, unsigned n, unsigned smode = 0) {
     volatile uint8_t* p = g_waPool;
     float s = 1.0f / (float)n;
@@ -165,14 +168,25 @@ static const char* worldAnimState() {
     return "on";
 }
 
+static volatile uint8_t* worldAnimsLiveMode() {
+    return g_shadowOn && g_shadowMode ? g_shadowMode : (volatile uint8_t*)g_eng.modeByte;
+}
+
 // From the per-tick hook, before the tick's updates run.
 static void updateWorldAnims() {
     if (!g_waPool) return;
+    *(volatile uintptr_t*)(g_waPool + kWorldLiveModeOffset) = (uintptr_t)worldAnimsLiveMode();
     for (int g = 0; g < kWorldGroups; g++) {
         unsigned n = worldAnimsN(g);
-        // the stock context's mode, for the repeat's counters: it can change
+        // notyett's gate: the timer families' mask (0 while they are off or
+        // muted) while this group is on, so a countdown's zero test waits on
+        // the very ticks their decrement skips
+        uint8_t tm = n > 1 && g_timerMask ? *g_timerMask : 0;
+        if (g_waPool[kWorldGroupStride * g + 3] != tm) g_waPool[kWorldGroupStride * g + 3] = tm;
+        // The stock context for repeat counters and camera quake inputs can change
         // with N unchanged (60 fps in play and 120 in a 60 Hz menu are both 2)
-        unsigned smode = n > 1 && g == kWaGroupRepeat && g_shadowMode ? *g_shadowMode : 0;
+        unsigned smode = n > 1 && (g == kWaGroupRepeat || g == kWaGroupObjects) &&
+                         g_shadowMode ? *g_shadowMode : 0;
         if (n != (unsigned)g_waN[g] || smode != (unsigned)g_waSmode[g]) {
             worldAnimsApply(g, n, smode);
         }
@@ -246,7 +260,10 @@ static void measureWorldAnims(LONGLONG now) {
             g_waPrevGate[s.counter][0] = t;
             g_waPrevGate[s.counter][1] = k;
             WaGroupVerdict& gv = sum.v[s.group];
-            if (ok && dt) {
+            // a notyett counts on the timer families' ticks: no 1/N verdict
+            // while they are off and it counts on every tick
+            bool timed = s.kind != WA_NOTYETT || g_waPool[kWorldGroupStride * s.group + 3];
+            if (ok && dt && timed) {
                 unsigned n = sum.n[s.group];
                 double want = (double)dt / n, slack = want * 0.05 > 2.0 ? want * 0.05 : 2.0;
                 gv.live++;
@@ -375,6 +392,7 @@ static void installWorldAnims() {
     memcpy(pool + kWorldCodeOffset, kWorldCode, sizeof(kWorldCode));
     *(float*)(pool + kWorldZeroOffset) = 0.0f;
     *(float*)(pool + kWorldZeroOffset + 4) = 1.0f;
+    *(uintptr_t*)(pool + kWorldLiveModeOffset) = (uintptr_t)worldAnimsLiveMode();
     bool ok = true;
     for (const auto& f : kWorldFixups) {
         if (f.next) {
@@ -507,7 +525,8 @@ extern "C" __declspec(dllexport) int OkamiWorldAnimSelfTest(const char* mainPath
         fclose(rep);
         return 1;
     }
-    fprintf(rep, "main %p\npool %p\n", (void*)m, (void*)g_waPool);
+    fprintf(rep, "main %p\npool %p\nlive_mode %p\n", (void*)m, (void*)g_waPool,
+            (void*)worldAnimsLiveMode());
     int fails = 0;
     uint8_t installedCode[kWorldPoolSize - kWorldCodeOffset];
     memcpy(installedCode, g_waPool + kWorldCodeOffset, sizeof(installedCode));
@@ -574,6 +593,8 @@ extern "C" __declspec(dllexport) int OkamiWorldAnimSelfTest(const char* mainPath
             g_fcHooked = hook != 0;
             g_waReady = complete != 0;
             frameClockOnTick();
+            fails += *(uintptr_t*)(g_waPool + kWorldLiveModeOffset) !=
+                     (uintptr_t)worldAnimsLiveMode();
             fprintf(f, "%d,%d,%d,%d,%d,%d,%d,%d,%d", fps, mode, real, master, groups, muted,
                     shadow, hook, complete);
             for (int g = 0; g < kWorldGroups; g++) {
@@ -639,7 +660,11 @@ extern "C" __declspec(dllexport) int OkamiWorldAnimSelfTest(const char* mainPath
         run(0);
         int counted[kWorldGroups] = {};
         for (const auto& st : kWorldSites) {
-            if (waCounted(st.kind)) counted[st.group]++;
+            // as measureWorldAnims: a notyett has no verdict while its group's
+            // timer byte is 0
+            if (waCounted(st.kind) &&
+                (st.kind != WA_NOTYETT || g_waPool[kWorldGroupStride * st.group + 3]))
+                counted[st.group]++;
         }
         WaSummary s = g_waLast;
         char v[96];
