@@ -1,4 +1,4 @@
-Okami HD High-FPS Patch 1.0.2
+Okami HD High-FPS Patch 1.0.3
 =============================
 
 Runs the Steam version of Okami HD at 60 or 120 fps instead of its fixed

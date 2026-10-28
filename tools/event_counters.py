@@ -20,7 +20,11 @@ ticks only. Some of those counters change once per *event* instead:
 
 An event test is `call E; test al, al; jcc` with E one of the above, and a
 counter is event-gated when the event edge of such a test dominates it in the
-function's control-flow graph (jump-table cases are roots; see event_gated()).
+function's control-flow graph (jump-table cases are roots; see event_gated()),
+or when its function only runs behind one: called directly, address never
+taken, and every call behind an event edge, up to CALLERS calls up. The dig's
+hole grows in 459D90, which pl00's press handler 3C18B0 calls once per press;
+the one-function test missed its two count rows until 1.0.3.
 
 A motion that does not loop answers "ended" on every tick once it has played,
 so a counter behind it can also be a per-tick wait after a one-shot motion.
@@ -71,6 +75,13 @@ NOT_PACED = {
               "(B6B0D0) or B6B13C",
     0x3D13F4: "pl00 (3D1330): -2 off +E3C for each button pressed this tick (B6B0D0) "
               "or B6B13C",
+    # world_anims.h (rows removed 2026-10-28): the dig's hole, once per press
+    0x459DA1: "459D90, called only by pl00's dig press handler 3C18B0 (3C19BC, behind "
+              "the dig button's press B6B0D0): the hole et68's +E3E gains 2 or 6 a "
+              "press; its size is +E3E x 0.02 and it is dug at 0.9",
+    0x459DBE: "459D90, the same press: the hole's +E3C (its time left, counted down a "
+              "stock tick at a time by lea_timers 2F2389/2F2423) gains 40 or 120, "
+              "capped at 900",
     # action_timers.h (2026-10-09): once per volley
     0x2770E3: "em2b 276DE0 state 3: +E3E indexes the volley pattern, stepped once per "
               "projectile 0x607 (when the paced +E3C countdown reaches 0, a row at "
@@ -98,10 +109,9 @@ NOT_PACED = {
 # per-tick wait after a one-shot motion; a loop count this large is unlikely ---
 STILL_PACED = {
     0x1F13AC: "+E3C = (rand & 15) + 5 or rand & 1",
-    0x1FCD13: "+E3E = a float's integer part",
-    0x1FCD35: "an1e 1FCC10's wait test (a notyet, its draw 1FCD3F behind it): the "
-              "advance's jne 1FCCD5 only skips a turn and rejoins at 1FCCEE, so nothing "
-              "below the join depends on the motion's end",
+    # (1FCD13 and 1FCD35, an1e 1FCC10, were listed here until 1.0.3: the advance's
+    # jne 1FCCD5 only skips a turn and rejoins at 1FCCEE, which the strict edge
+    # test no longer takes for the motion's end)
     0x1FD152: "+E3C = a float's integer part, or rand & 1",
     0x4AAB40: "+E3C = rand % param + param (4AAA70's caller decides)",
     0x3CA79F: "+E3C = 1 or 10 (pl00 sub-state 0x56)",
@@ -109,7 +119,8 @@ STILL_PACED = {
 }
 
 BASE = 0x180000000
-EVENT_CALLS = {0x4B9C80: "motion ended", 0x4B9B70: "motion ended", 0x239420: "anim ended"}
+CALLERS = 2   # calls up the surveys follow from a counter to its event test
+EVENT_CALLS ={0x4B9C80: "motion ended", 0x4B9B70: "motion ended", 0x239420: "anim ended"}
 PRESS_ARRAYS = {0xB6B0D0, 0xB6B0D8, 0xB6AD20, 0xB6AD28}   # pressed this tick
 COND = {"je", "jne", "jg", "jge", "jl", "jle", "ja", "jae", "jb", "jbe", "js", "jns",
         "jp", "jnp", "jo", "jno"}
@@ -119,10 +130,38 @@ RIP = re.compile(r"\[rip ([+-]) 0x([0-9a-f]+)\]")
 class Image:
     def __init__(self):
         import xrefs
-        pe, base, _img, _text = xrefs.load_bin("main.dll")
+        pe, base, img, text = xrefs.load_bin("main.dll")
+        self.pe, self.img, self.text = pe, img, text
         self.insns = [(a - BASE, m, o, s) for a, m, o, s in xrefs.cached_insns("main.dll")]
         self.idx = {a: k for k, a in enumerate(i[0] for i in self.insns)}
         self.imps = {a - BASE: n for a, n in xrefs.import_names(pe).items()}
+        self._calls = None
+
+    def calls(self):
+        """({target: [site, ...]} for every direct call and jump, {rva, ...} of the
+        code addresses taken: loaded by another instruction (a callback) or held by
+        a pointer in data (a base relocation: vtables, handler tables). A function
+        whose address is taken can be called from anywhere."""
+        if self._calls is None:
+            lo, hi = self.text[0], self.text[0] + self.text[1]
+            tgt, taken = collections.defaultdict(list), set()
+            for a, m, o, s in self.insns:
+                if m == "call" or m == "jmp" or m in COND:
+                    t = self.target(o)
+                    if t is not None:
+                        tgt[t].append(a)
+                        continue
+                r = self.rip(a, o, s)
+                if r is not None and lo <= r < hi:
+                    taken.add(r)
+            for blk in getattr(self.pe, "DIRECTORY_ENTRY_BASERELOC", ()):
+                for e in blk.entries:
+                    if e.type == 10:  # IMAGE_REL_BASED_DIR64
+                        v = int.from_bytes(self.img[e.rva:e.rva + 8], "little") - BASE
+                        if lo <= v < hi:
+                            taken.add(v)
+            self._calls = (tgt, taken)
+        return self._calls
 
     def target(self, op):
         try:
@@ -198,10 +237,13 @@ def _graph(im, body):
             new = (set.intersection(*ps) if ps else set()) | {n}
             if new != dom[n]:
                 dom[n], changed = new, True
-    return blk, dom
+    return blk, dom, pred
 
 
-def _event_edges(im, body, blk):
+def _event_edges(im, body, blk, pred=None):
+    """[(edge block, why, test rva)]. With pred, only an edge whose block the test
+    alone enters: a join that the other path reaches as well (the motion advance's
+    `jnz` past a call the not-ended path makes, 39CF56) runs on both."""
     out = []
     for k, (a, mn, op, sz) in enumerate(body):
         if mn != "call" or k + 2 >= len(body):
@@ -224,29 +266,63 @@ def _event_edges(im, body, blk):
             continue
         taken, fall = blk.get(im.target(o2)), blk.get(a2 + s2)
         edge = fall if (m2 == "je") != negate else taken
+        if edge is not None and pred is not None and pred[edge] != [blk[a2]]:
+            continue
         if edge is not None:
             out.append((edge, why, a))
     return out
 
 
-def event_gated(rvas, im=None):
-    """{rva: (why, test rva)} for the sites an event edge dominates."""
+def _gated(im, rva, cache, callers, strict):
+    body = _function(im, rva)
+    if not body:
+        return None
+    key = body[0][0]
+    if key not in cache:
+        blk, dom, pred = _graph(im, body)
+        cache[key] = (blk, dom, _event_edges(im, body, blk, pred if strict else None), body)
+    blk, dom, edges, body = cache[key]
+    b = blk.get(rva)
+    if b is None:
+        return None
+    for edge, why, test in edges:
+        if edge in dom.get(b, ()):
+            return why, test
+    if callers <= 0:
+        return None
+    # One call up: the body's entries (its start, and any other instruction a call
+    # or jump from outside lands on) must all be called directly, and every one of
+    # those calls must itself be behind an event edge.
+    tgt, taken = im.calls()
+    lo, hi = body[0][0], body[-1][0]
+    first = None
+    for a, *_ in body:
+        sites = [s for s in tgt.get(a, ()) if not lo <= s <= hi]
+        if a != lo and not sites:
+            continue
+        if a in taken or not sites:
+            return None
+        for s in sites:
+            up = _gated(im, s, cache, callers - 1, strict)
+            if up is None:
+                return None
+            first = first or ("%s, caller %06X" % (up[0], s), up[1])
+    return first
+
+
+def event_gated(rvas, im=None, callers=0, strict=False):
+    """{rva: (why, test rva)} for the sites an event edge dominates. With callers=n,
+    also those in a function that only runs behind one up to n calls up: every
+    direct call of it is behind an event edge in its caller, and its address is
+    never taken (a press handler's helper, 459D90). With strict, an edge counts
+    only when its block has the test as its only predecessor (see _event_edges);
+    early_countdowns keeps the old test."""
     im = im or Image()
     cache, out = {}, {}
     for rva in rvas:
-        body = _function(im, rva)
-        if not body:
-            continue
-        key = body[0][0]
-        if key not in cache:
-            blk, dom = _graph(im, body)
-            cache[key] = (blk, dom, _event_edges(im, body, blk))
-        blk, dom, edges = cache[key]
-        b = blk.get(rva)
-        for edge, why, test in edges:
-            if b is not None and edge in dom.get(b, ()):
-                out[rva] = (why, test)
-                break
+        g = _gated(im, rva, cache, callers, strict)
+        if g:
+            out[rva] = g
     return out
 
 
@@ -273,6 +349,6 @@ def timer_sites():
 
 if __name__ == "__main__":
     sites = timer_sites()
-    for rva, (why, test) in sorted(event_gated(sites).items()):
+    for rva, (why, test) in sorted(event_gated(sites, callers=CALLERS, strict=True).items()):
         tag = "STILL_PACED" if rva in STILL_PACED else "NOT_PACED?" if rva in NOT_PACED else "OPEN"
         print("%06X %-22s %-12s test %06X  %s" % (rva, sites[rva], why, test, tag))

@@ -3954,8 +3954,8 @@ site,verdict,note
 45917F,fixed,459120: the wait +68 (count 45917F) and the element's move (pre 4591C7)
 4591CF,fixed,459120: the wait +68 (count 45917F) and the element's move (pre 4591C7)
 459C2D,stock,459C10: +80 is occupancy of an eight-entry request queue; append one 80-byte record and link it to the caller's selected bucket
-459DA1,fixed,"pl00's held-input selected-subactor helper 459D90: +E3E gains state-derived 2 or 6 and +E3C gains 20 times that step on stock ticks; the helper executed on all 372 of 372 traced updates, and its 0x384 clamp remains active"
-459DBE,fixed,"pl00's held-input selected-subactor helper 459D90: +E3E gains state-derived 2 or 6 and +E3C gains 20 times that step on stock ticks; the helper executed on all 372 of 372 traced updates, and its 0x384 clamp remains active"
+459DA1,stock,"stock: the dig's hole (et68, one of 16 held by B65A70): 459D90's only caller is pl00's dig press handler 3C18B0 (3C19BC, behind the dig button's press B6B0D0, one tick per press), so +E3E gains 2 or 6 per press, not per tick; the hole's size is +E3E x 0.02 and it is dug at 0.9, so every press must count (row removed in 1.0.3)"
+459DBE,stock,"stock: the same press: the hole's +E3C, its time left (counted down once a stock tick by lea_timers 2F2389/2F2423), gains 40 or 120 per press, capped at 900 (row removed in 1.0.3)"
 45AEDE,stock,"45AE60 resource allocation relocates five file offsets by the resource base, guarded by bit 4 in +64 so each source resource is relocated once."
 45AEE2,stock,"45AE60 resource allocation relocates five file offsets by the resource base, guarded by bit 4 in +64 so each source resource is relocated once."
 45AEE6,stock,"45AE60 resource allocation relocates five file offsets by the resource base, guarded by bit 4 in +64 so each source resource is relocated once."

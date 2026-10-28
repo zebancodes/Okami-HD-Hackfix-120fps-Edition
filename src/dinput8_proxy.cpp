@@ -46,7 +46,7 @@
 #include <cstring>
 #include <initializer_list>
 
-#define OKAMI_HACKFIX_VERSION "1.0.2"
+#define OKAMI_HACKFIX_VERSION "1.0.3"
 
 static bool readableRange(const void* p, size_t n);  // defined with the probes
 static uint8_t* allocNear(uint8_t* nearTo, size_t size);  // defined with the patch helpers

@@ -325,7 +325,7 @@ site,kind,helper,function,reg,limit,k,result,decision,evidence,bytes
 247AD9,call,23A2E0,247900,xmm1,0.113446@67EC6C,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E80228FFFF
 24826F,call,23A2E0,2480A0,xmm1,0.0349066@679C00,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E86C20FFFF
 248511,call,23A2E0,2480A0,xmm1,0.0349066@679C00,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8CA1DFFFF
-2486F8,call,23A2E0,248550,xmm1,0.349066@67E504,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8E31BFFFF
+2486F8,call,23A2E0,248550,xmm1,0.349066@67E504,,the wrapper's,manual-left,"read: once per action, an aim: em00..em04, em7a, em80, em81, em83, em84 (update 2422E0) state 7, 248550 sub-state 3: on the motion's end (239420) every path leaves the state (+E34 = 0x1101 and return, or 0x20201, 0xC01, 0xB01, 0x401), then this call turns toward Amaterasu by up to 20 degrees once, before the 40-degree test that picks 23F370 (once_blocks knows phase-byte blocks only)",E8E31BFFFF
 24B746,call,23A2E0,24B580,xmm1,0.10472@679C80,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E895EBFEFF
 24B8EB,call,23A2E0,24B830,xmm1,0.0349066@679C00,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E8F0E9FEFF
 24BB52,call,23A2E0,24BAB0,xmm1,0.0349066@679C00,,the wrapper's,step,constants; 23A2E0 turns the heading by it every call,E889E7FEFF

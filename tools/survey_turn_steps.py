@@ -148,6 +148,12 @@ MANUAL = {
     0x564FFE: "read: callscale row (objects group), uta8 564E60 turns toward its point by "
               "at most +E3E x 8 degrees a tick in phase 1 (reads.csv 565013)",
     # calls of the wrapper 23A2E0 (its limit is the parameter x speed)
+    0x2486F8: "read: once per action, an aim: em00..em04, em7a, em80, em81, em83, em84 "
+              "(update 2422E0) state 7, 248550 sub-state 3: on the motion's end (239420) "
+              "every path leaves the state (+E34 = 0x1101 and return, or 0x20201, 0xC01, "
+              "0xB01, 0x401), then this call turns toward Amaterasu by up to 20 degrees "
+              "once, before the 40-degree test that picks 23F370 (once_blocks knows "
+              "phase-byte blocks only)",
     0x25A401: "read: callscale row (actor group), em0f 25A310: +E14 = 1 + rand, set once per "
               "action (25A3D1), x 3 degrees a tick in phase 1: a stock-unit limit",
     0x2766F5: "read: callscale row (actor group), em2b 276400: +E14 ramps 3 -> 12 by 0.3 x "

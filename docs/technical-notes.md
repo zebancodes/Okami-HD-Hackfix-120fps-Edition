@@ -1661,6 +1661,32 @@ Project layout
 Changelog
 ---------
 
+**1.0.3** - digging, and an enemy's aim.
+- Fixed: digging a hole still took about 27 presses at 120 and 16 at 60,
+  against about 10 at 30. 1.0.2 made Amaterasu count every press, but the
+  hole counts them too: each press adds 2 to its size (6 once she digs
+  deeper; the hole is dug at 45, from 10) and time before it closes, in
+  `459D90`, which only the dig's press handler `3C18B0` calls. Two `count`
+  rows paced those adds to stock ticks, so at 120 only the presses that fell
+  on a stock tick grew the hole, and a slow dig could run out of time. The
+  rows are gone, and the hole grows by the same amount per press at every
+  rate.
+- Fixed: some enemies (`2422E0`'s classes: em00..em04, em7a, em80, em81,
+  em83, em84) turn toward Amaterasu by up to 20 degrees once, when the motion
+  of their state 7 ends and they pick their next move. That turn was scaled
+  as if it ran every tick, so at 120 it was 5 degrees. It is a one-off aim,
+  the same at any rate, and is now left as shipped (`2486F8`).
+- `tools/survey_event_counters.py` now follows a counter up to two calls to
+  its event test: a function counts as event-gated when it is only called
+  directly (its address is never taken) and every call is behind a press or
+  a motion's end. On the 1.0.2 tables it finds the dig's two rows and no
+  others. It also takes an event test's edge only when the test alone leads
+  to it: a branch to a block the other path reaches too is not the event's.
+  Read across every family's patched sites, the same test found the turn
+  above; the rest behind a press or a motion's end set a value on the event
+  (a wait's length, a launch speed), or add one tick's worth of an enemy
+  clock that counts down every tick elsewhere.
+
 **1.0.2** - fixes for what players reported in 1.0.1.
 - Fixed: ink refilled four times as fast at 120 (twice at 60). The ink only
   changes through one function whose amount is its caller's argument, so the

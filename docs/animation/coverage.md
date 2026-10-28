@@ -1,8 +1,8 @@
 # Coverage: the candidates against the patch
 
-Written by `tools/coverage_report.py` on 2026-10-15 from `sites.csv` (12485 candidates), `classification.csv` and the tables in `src/` (6930 patched ranges).
+Written by `tools/coverage_report.py` on 2026-10-28 from `sites.csv` (12485 candidates), `classification.csv` and the tables in `src/` (6927 patched ranges).
 
-**Settled: 12485 of 12485 (100%)**: covered 4327, excluded 3881 (library 1626, classified 2227, port-scaled 28), read by hand 4277. **Near a patch, unproven: 0.** **Left: 0** (classified to patch 0, to review 0, never classified 0).
+**Settled: 12485 of 12485 (100%)**: covered 4325, excluded 3881 (library 1626, classified 2227, port-scaled 28), read by hand 4279. **Near a patch, unproven: 0.** **Left: 0** (classified to patch 0, to review 0, never classified 0).
 
 Without the library: settled 10859 of 10859 (100%), 100% with the near ones.
 
@@ -13,18 +13,18 @@ Without the library: settled 10859 of 10859 (100%), 100% with the near ones.
 | objects | 1016 | 112 | 1 | -- | 524 | -- | -- | -- | -- | 1653 |
 | library | -- | -- | -- | 1626 | -- | -- | -- | -- | -- | 1626 |
 | animals | 497 | 622 | 2 | -- | 340 | -- | -- | -- | -- | 1461 |
-| player and weapons | 743 | 128 | 13 | -- | 514 | -- | -- | -- | -- | 1398 |
+| player and weapons | 741 | 128 | 13 | -- | 516 | -- | -- | -- | -- | 1398 |
 | ui | 189 | 162 | -- | -- | 194 | -- | -- | -- | -- | 545 |
 | materials | 285 | -- | -- | -- | 188 | -- | -- | -- | -- | 473 |
 | people | 79 | 63 | -- | -- | 112 | -- | -- | -- | -- | 254 |
 | effects | 123 | 19 | -- | -- | 78 | -- | -- | -- | -- | 220 |
-| **all** | 4327 | 2227 | 28 | 1626 | 4277 | 0 | 0 | 0 | 0 | 12485 |
+| **all** | 4325 | 2227 | 28 | 1626 | 4279 | 0 | 0 | 0 | 0 | 12485 |
 
-Covered, by family: world_anims.h 1966, world_anims.h literal 572, memory_timers.h 540, phase_steps.h 401, action_timers.h 244, world_anims.h call 207, decay_factors.h 168, lea_timers.h 108, integer_skips.h 40, turn_callers.h 38, hoisted_decay.h 9, kAirAccelSites 6, task_waits.h 6, kSwimAccelSites 5, menu_transitions.h 5, menu_transitions.h literal 4, kStickDriftSites 3, kAirGateSites 2, mode_constants.h 1, kRunPatchRva 1, frame_clocks.h tick 1.
+Covered, by family: world_anims.h 1964, world_anims.h literal 572, memory_timers.h 540, phase_steps.h 401, action_timers.h 244, world_anims.h call 207, decay_factors.h 168, lea_timers.h 108, integer_skips.h 40, turn_callers.h 38, hoisted_decay.h 9, kAirAccelSites 6, task_waits.h 6, kSwimAccelSites 5, menu_transitions.h 5, menu_transitions.h literal 4, kStickDriftSites 3, kAirGateSites 2, mode_constants.h 1, kRunPatchRva 1, frame_clocks.h tick 1.
 
 Excluded, the classification's reasons (top 8): switch (1041); compared with 4 small values (#0,#1,#2,#3) (432); compared with 3 small values (#0,#1,#2) (138); compared with 5 small values (#0,#1,#2,#3,#4) (90); array index (83); reads feed only arithmetic/calls (76); float stepped with no bound seen (48); dereferenced (39).
 
-Read by hand (`reads.csv`), by verdict: once 1496, stock 1277, fixed 903, follows 601.
+Read by hand (`reads.csv`), by verdict: once 1496, stock 1279, fixed 903, follows 601.
 
 Check: of the 1478 candidates `animation_inventory.py` found covered in 2026-09, 1478 remain covered, have documented replacement fixes or have reviewed event counters restored to stock behavior.
 

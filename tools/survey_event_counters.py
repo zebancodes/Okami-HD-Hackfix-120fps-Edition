@@ -8,7 +8,9 @@ button press loses the events that land between stock ticks, so the loop plays
 about N times as often, or the press is lost (tools/event_counters.py).
 
 Problems:
-  * a paced site that an event edge dominates and that is not reviewed in
+  * a paced site that an event edge dominates, in its own function or up to
+    event_counters.CALLERS calls up (the dig's hole, 459D90, grows only from
+    the press handler's call), and that is not reviewed in
     event_counters.STILL_PACED;
   * a site event_counters.NOT_PACED lists that a table still paces.
 
@@ -21,7 +23,7 @@ import event_counters as ec
 
 def main():
     sites = ec.timer_sites()
-    gated = ec.event_gated(sites)
+    gated = ec.event_gated(sites, callers=ec.CALLERS, strict=True)
     problems = []
     for rva, (why, test) in sorted(gated.items()):
         if rva not in ec.STILL_PACED:

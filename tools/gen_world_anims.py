@@ -3663,13 +3663,6 @@ MANIFEST = [
      "pl00 state 3BDCB0, sub-state 3: persistent vertical speed +E54 gains the stock "
      "0.255 step per update on the other side of the threshold; scale this increment "
      "by s"),
-    ("player", "count", 0x459DA1, "add word ptr [rax + 0xe3e], r8w", None,
-     "pl00 3C1830 calls this selected-subactor updater on held input every update (372 "
-     "of 372 traced ticks); the selected actor's +E3E animation count gains "
-     "state-derived 2 or 6 once per stock tick"),
-    ("player", "count", 0x459DBE, "add word ptr [rcx + 0xe3c], r8w", None,
-     "pl00 selected-subactor updater 459D90: the same actor's +E3C animation phase "
-     "gains 20 times the state-derived step once per stock tick, before its 0x384 cap"),
     # Pl00 linked-actor state 3D1330.
     ("player", "notyet", 0x3D145C, "test ax, ax", 0x3D148C,
      "pl00 state 3D1330: when +E3C is held at zero between stock ticks, defer its "

@@ -7100,8 +7100,8 @@ site,function,subsystem,group,shape,status,family,distance,offpath,decision,reas
 3D163D,3D14B0,object:pl,player and weapons,counter,covered,world_anims.h,0,,patch-static,ordered compare (#10)
 3D1789,3D1670,object:pl,player and weapons,counter,covered,world_anims.h,0,,patch-static,counts down to 0
 3D18A5,3D1820,object:pl,player and weapons,counter,covered,world_anims.h,0,,patch-static,counts down to 0
-459DA1,459D90,object:pl,player and weapons,int-expr,covered,world_anims.h,0,,patch,reads feed only arithmetic/calls
-459DBE,459D90,object:pl,player and weapons,int-expr,covered,world_anims.h,0,,patch,ordered compare (#384)
+459DA1,459D90,object:pl,player and weapons,int-expr,read,,,,patch,"read: stock, stock: the dig's hole (et68, one of 16 held by B65A70): 459D90's only caller is pl00's dig press handler 3C18B0 (3C19BC, behind the dig button's press B6B0D0, one tick per press), so +E3E gains 2 or 6 per press, not per tick; the hole's size is +E3E x 0.02 and it is dug at 0.9, so every press must count (row removed in 1.0.3)"
+459DBE,459D90,object:pl,player and weapons,int-expr,read,,,,patch,"read: stock, stock: the same press: the hole's +E3C, its time left (counted down once a stock tick by lea_timers 2F2389/2F2423), gains 40 or 120 per press, capped at 900 (row removed in 1.0.3)"
 3D1D34,3D1CB0,object:plwp/wp,player and weapons,int-step,covered,world_anims.h,0,,patch-static,ordered compare (#ff)
 3D1D49,3D1CB0,object:plwp/wp,player and weapons,int-step,covered,world_anims.h,0,,patch,ordered compare (#ff)
 3D1D76,3D1CB0,object:plwp/wp,player and weapons,multiplier,read,world_anims.h,31,,patch,"read: follows, the player's weapon 3D1CB0: +D2C x the fade byte +1070 / 255, +1070 a count row (3D1D49)"
