@@ -59,6 +59,8 @@ done
 job pass cave_pressure tools/verify_cave_pressure.py
 job fail cave_pressure_break_old tools/verify_cave_pressure.py --break old
 job pass check_patch_sites tools/check_patch_sites.py
+job pass check_defaults tools/check_defaults.py
+job fail check_defaults_break_integers tools/check_defaults.py --break integers
 job pass player_anim_rates tools/verify_player_anim_rates.py
 for b in walk reg; do
     job fail player_anim_rates_break_$b tools/verify_player_anim_rates.py --break "$b"

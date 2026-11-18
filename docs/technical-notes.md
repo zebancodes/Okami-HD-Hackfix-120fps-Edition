@@ -56,12 +56,13 @@ Features
   focus requirement, beep, present sync interval, draw distance, chaining to
   another `dinput8` proxy); the development-era `okami.ini` is still read
   when it is the only one, with the development features on.
-- Experimental UI integer-clock prototype: `FixIntegerSkips=1` enables the
-  audited sites in [integer_skips.csv](animation/integer_skips.csv), with
-  **F4** for independent A/B comparison (`IntegerToggleKey`). Off by default.
-  Counters keep whole stock steps: 30 Hz in gameplay and 60 Hz in stock menus,
-  at either a 60 or 120 fps target. Offline verified; in-game validation is
-  still pending. F9 stock mode and F4 mute execute the original instructions.
+- The HUD's and menus' integer clocks (`FixIntegerSkips`, on by default since
+  1.0.4): the audited sites in [integer_skips.csv](animation/integer_skips.csv),
+  among them the battle clock behind the results' time grade. Counters keep
+  whole stock steps: 30 Hz in gameplay and 60 Hz in stock menus, at either a
+  60 or 120 fps target. F9 stock mode and the family's A/B key
+  (`IntegerToggleKey`, F4 with `Developer=1`) execute the original
+  instructions.
 - Coexists with ReShade (and its add-ons such as RenoDX or ReLimiter), the
   Steam overlay and NVIDIA's driver present layer (`NvPresent64.dll`).
 
@@ -1639,6 +1640,7 @@ Project layout
     tools/deploy.py         copies the build into the game folder
     tools/find_*.py         generate the patch site tables from main.dll
     tools/check_patch_sites.py  validate every table against the game binary
+    tools/check_defaults.py  every fix family the coverage counts is on for players
     tools/pcode_census.py   Ghidra p-code census: every self-updating store and clock read
     tools/animation_inventory.py  census -> docs/animation/{sites,clock_reads}.csv, summary.md
     tools/ghidra_lines.py   decompile functions with an instruction RVA on every line
@@ -1660,6 +1662,32 @@ Project layout
 
 Changelog
 ---------
+
+**1.0.4** - the battle clock.
+- Fixed: a battle's time counted on every tick, four times as fast at 120
+  and twice at 60, so the results' time grade, and the yen bonus it sets,
+  came out low. The grade (`3F69F0`) is the clock's ticks since the battle
+  began over a par, a sum of per-enemy allowances in stock ticks (600 when
+  an enemy has none listed); a ratio up to 1.0 gets the top grade, and it
+  drops a step above 1.0, 1.25, 1.5 and 1.75. At 120, a fight that took more
+  than a quarter of its par lost the top grade, and one over 44% of it got
+  the lowest. The clock's one increment, `cCockBattleResult+0x184` at
+  `3F7544`, is an integer clock (`integer_skips.h`), and that family counts
+  it on stock ticks only. The family had been built and measured in play
+  before 1.0.0, but it defaulted to off and no release turned it on.
+  `FixIntegerSkips` now defaults to on, which also gives its other counters
+  their stock length: how long the life, ink, astral pouch and money
+  displays stay up after a change, the combo count, praise and the enemy's
+  life bar, the battle results screen's waits, the pause menu's close, the
+  status and bestiary screens, the save screens' waits and the controller
+  options' timeouts (39 counters in all). No other family paces any of
+  them: where a world row works in the same functions (the money count-up,
+  the ink cooldown, the life gauge's pulse, the memory-card wait's length,
+  the save screen's scale), it is on a different field.
+- `tools/check_defaults.py`, in the suite with `--break integers`: every
+  fix flag is on by default in both places a player's settings come from
+  (no ini, or an ini without the line), the release ini turns none off, and
+  every family `coverage_report.py` counts maps to one of those flags.
 
 **1.0.3** - digging, and an enemy's aim.
 - Fixed: digging a hole still took about 27 presses at 120 and 16 at 60,

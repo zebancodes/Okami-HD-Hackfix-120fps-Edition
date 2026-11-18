@@ -1,6 +1,6 @@
 # Coverage: the candidates against the patch
 
-Written by `tools/coverage_report.py` on 2026-10-28 from `sites.csv` (12485 candidates), `classification.csv` and the tables in `src/` (6927 patched ranges).
+Written by `tools/coverage_report.py` on 2026-11-18 from `sites.csv` (12485 candidates), `classification.csv` and the tables in `src/` (6927 patched ranges).
 
 **Settled: 12485 of 12485 (100%)**: covered 4325, excluded 3881 (library 1626, classified 2227, port-scaled 28), read by hand 4279. **Near a patch, unproven: 0.** **Left: 0** (classified to patch 0, to review 0, never classified 0).
 

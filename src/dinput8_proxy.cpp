@@ -46,7 +46,7 @@
 #include <cstring>
 #include <initializer_list>
 
-#define OKAMI_HACKFIX_VERSION "1.0.3"
+#define OKAMI_HACKFIX_VERSION "1.0.4"
 
 static bool readableRange(const void* p, size_t n);  // defined with the probes
 static uint8_t* allocNear(uint8_t* nearTo, size_t size);  // defined with the patch helpers
@@ -274,7 +274,7 @@ struct Config {
     bool fixFrameGates = true;  // real-time rate for effects gated off the frame counter
     bool fixFramePhases = true;  // real-time rate for the UI oscillators
     bool fixFrameClocks = true;  // every other frame-counter clock (frame_clocks.h)
-    bool fixIntegerSkips = false;  // experimental UI integer clocks (F1)
+    bool fixIntegerSkips = true;  // the HUD's and menus' integer clocks, the battle clock (F1)
     bool fixDayClock = true;  // the day/night clock at the stock tick rate (day_clock.h)
     bool brushWatch = true;   // log each use of the brush's Rejuvenation stages (brush_watch.h)
     bool enemyWatch = true;   // log what each hit does to an enemy (enemy_watch.h)
@@ -486,7 +486,7 @@ static void loadConfig() {
     g_cfg.fixFrameGates = GetPrivateProfileIntA(sec, "FixFrameGates", 1, ini) != 0;
     g_cfg.fixFramePhases = GetPrivateProfileIntA(sec, "FixFramePhases", 1, ini) != 0;
     g_cfg.fixFrameClocks = GetPrivateProfileIntA(sec, "FixFrameClocks", 1, ini) != 0;
-    g_cfg.fixIntegerSkips = GetPrivateProfileIntA(sec, "FixIntegerSkips", 0, ini) != 0;
+    g_cfg.fixIntegerSkips = GetPrivateProfileIntA(sec, "FixIntegerSkips", 1, ini) != 0;
     g_cfg.fixDayClock = GetPrivateProfileIntA(sec, "FixDayClock", 1, ini) != 0;
     g_cfg.brushWatch = GetPrivateProfileIntA(sec, "BrushWatch", g_cfg.developer ? 1 : 0, ini) != 0;
     g_cfg.enemyWatch = GetPrivateProfileIntA(sec, "EnemyWatch", g_cfg.developer ? 1 : 0, ini) != 0;
@@ -4007,8 +4007,7 @@ static void nearResetForTest() {
     ReleaseSRWLockExclusive(&g_nearLock);
 }
 
-// What the watcher's installs ask for, in order, with the default ini and
-// IntegerSkips on (as in the development okami.ini).
+// What the watcher's installs ask for, in order, with the default ini.
 struct NearRequest {
     const char* what;
     size_t size;
